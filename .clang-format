@@ -1,0 +1,33 @@
+BasedOnStyle: LLVM
+IndentWidth: 5
+TabWidth: 5
+UseTab: Never
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterControlStatement: true
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterCaseLabel: true
+  BeforeCatch: true
+  BeforeElse: true
+  IndentBraces: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: true
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortLoopsOnASingleLine: true
+ColumnLimit: 120
+DerivePointerAlignment: false
+PointerAlignment: Left
+SortIncludes: true
+SpacesInParentheses: true
+SpaceBeforeParens: Never
+AccessModifierOffset: -5
+ContinuationIndentWidth: 5
+IndentWrappedFunctionNames: false
+AlignAfterOpenBracket: DontAlign
+IndentCaseLabels: true
