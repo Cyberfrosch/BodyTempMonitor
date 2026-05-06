@@ -11,17 +11,87 @@
 
 OneWire           oneWire( TEMP_SENSOR_PIN );
 DallasTemperature sensors( &oneWire );
+Preferences       prefs;
 
 bool rtcOK = false;
 // RTC_DS3231 rtc;
+
+// Адреса датчиков, загруженные из NVS
+static DeviceAddress sensorAddr[2];
+static bool          bindingOK = false;
+
+static void AddrToStr( const DeviceAddress addr, char* buf, size_t len )
+{
+     snprintf( buf, len, "%02X%02X%02X%02X%02X%02X%02X%02X",
+               addr[0], addr[1], addr[2], addr[3],
+               addr[4], addr[5], addr[6], addr[7] );
+}
+
+void InitSensorBinding()
+{
+     prefs.begin( "sensors", false );
+
+     // Пробуем загрузить сохранённые адреса
+     size_t s0 = prefs.getBytes( "addr0", sensorAddr[0], 8 );
+     size_t s1 = prefs.getBytes( "addr1", sensorAddr[1], 8 );
+
+     if( s0 == 8 && s1 == 8 )
+     {
+          bindingOK = true;
+          char buf[17];
+          AddrToStr( sensorAddr[0], buf, sizeof( buf ) );
+          Serial.printf( "Sensor 0: %s (from NVS)\n", buf );
+          AddrToStr( sensorAddr[1], buf, sizeof( buf ) );
+          Serial.printf( "Sensor 1: %s (from NVS)\n", buf );
+          prefs.end();
+          return;
+     }
+
+     // Адресов нет — сканируем шину
+     Serial.println( "Scanning 1-Wire bus for sensor binding..." );
+     sensors.begin();
+     int found = sensors.getDeviceCount();
+     Serial.printf( "Found %d sensor(s)\n", found );
+
+     if( found < 2 )
+     {
+          Serial.println( "Need at least 2 sensors for binding" );
+          prefs.end();
+          return;
+     }
+
+     sensors.getAddress( sensorAddr[0], 0 );
+     sensors.getAddress( sensorAddr[1], 1 );
+
+     prefs.putBytes( "addr0", sensorAddr[0], 8 );
+     prefs.putBytes( "addr1", sensorAddr[1], 8 );
+     prefs.end();
+
+     bindingOK = true;
+     char buf[17];
+     AddrToStr( sensorAddr[0], buf, sizeof( buf ) );
+     Serial.printf( "Sensor 0: %s (saved to NVS)\n", buf );
+     AddrToStr( sensorAddr[1], buf, sizeof( buf ) );
+     Serial.printf( "Sensor 1: %s (saved to NVS)\n", buf );
+}
 
 SensorReading ReadSensors()
 {
      SensorReading reading;
      sensors.requestTemperatures();
-     int count = sensors.getDeviceCount();
-     if( count > 0 ) reading.temp0 = sensors.getTempCByIndex( 0 );
-     if( count > 1 ) reading.temp1 = sensors.getTempCByIndex( 1 );
+
+     if( bindingOK )
+     {
+          reading.temp0 = sensors.getTempC( sensorAddr[0] );
+          reading.temp1 = sensors.getTempC( sensorAddr[1] );
+     }
+     else
+     {
+          // Fallback: по индексу если привязка не удалась
+          int count = sensors.getDeviceCount();
+          if( count > 0 ) reading.temp0 = sensors.getTempCByIndex( 0 );
+          if( count > 1 ) reading.temp1 = sensors.getTempCByIndex( 1 );
+     }
      return reading;
 }
 

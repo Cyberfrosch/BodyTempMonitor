@@ -13,6 +13,7 @@
 #include <HTTPClient.h>
 #include <LittleFS.h>
 #include <OneWire.h>
+#include <Preferences.h>
 #include <WiFi.h>
 
 // Учетные данные (WIFI_SSID, WIFI_PASS, SERVER_URL)
@@ -51,7 +52,13 @@ struct SensorReading
 };
 
 /**
- * @brief Считывает температуры с обоих датчиков.
+ * @brief Инициализирует привязку датчиков: читает адреса из NVS или сканирует шину
+ *        и сохраняет привязку «канал 0 – адрес, канал 1 – адрес» в NVS.
+ */
+void InitSensorBinding();
+
+/**
+ * @brief Считывает температуру по сохранённым адресам.
  * @return SensorReading с актуальными значениями.
  */
 SensorReading ReadSensors();
