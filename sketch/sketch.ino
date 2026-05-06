@@ -16,6 +16,7 @@ void setup()
 
      sensors.begin();
 
+     InitSensorBinding();
      InitStorage();
      InitWiFi();
 }
