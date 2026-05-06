@@ -229,4 +229,11 @@ void HandleSerialCommands()
           }
           Serial.println( "File cleared" );
      }
+     else if( cmd == "rebind" )
+     {
+          prefs.begin( "sensors", false );
+          prefs.clear();
+          prefs.end();
+          Serial.println( "Sensor binding cleared. Reboot to rescan." );
+     }
 }

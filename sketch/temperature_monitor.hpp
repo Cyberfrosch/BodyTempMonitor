@@ -89,6 +89,7 @@ void SendToServer( const SensorReading& reading );
 /**
  * @brief Обрабатывает команды из Serial:
  *        "download" — вывести CSV в Serial,
- *        "clear"    — очистить CSV.
+ *        "clear"    — очистить CSV,
+ *        "rebind"   — сбросить привязку датчиков (требуется перезагрузка).
  */
 void HandleSerialCommands();
