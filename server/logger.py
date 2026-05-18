@@ -16,36 +16,23 @@ import csv
 import sqlite3
 import time
 from contextlib import closing
-from datetime import datetime
 from io import StringIO
 
 import serial
 
+from db_common import (
+    DATABASE,
+    init_db,
+    insert_temperatures_batch,
+    unix_to_str,
+)
+
 # ---------- Settings ----------
 SERIAL_PORT = "COM5"
 BAUD_RATE   = 115200
-DATABASE    = "sensor_data.db"
-
-CREATE_TABLE_SQL = """
-    CREATE TABLE IF NOT EXISTS temperatures (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp   TEXT    NOT NULL,
-        sensor_id   INTEGER NOT NULL,
-        temperature REAL    NOT NULL,
-        UNIQUE(timestamp, sensor_id)
-    )
-"""
 
 KNOWN_HEADERS = {"unixtime,temp0,temp1", "reltime,temp0,temp1"}
 
-
-def init_db(conn: sqlite3.Connection) -> None:
-    conn.execute(CREATE_TABLE_SQL)
-    conn.commit()
-
-
-def unix_to_str(ut: int) -> str:
-    return datetime.fromtimestamp(ut).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def is_unix_timestamp(value: str) -> bool:
@@ -90,8 +77,8 @@ def rows_to_db(rows: list[list[str]]) -> list[tuple]:
             if len(row) >= 3:
                 unix_ts = int(row[0])
                 ts = unix_to_str(unix_ts)
-                result.append((ts, 0, float(row[1]), unix_ts))
-                result.append((ts, 1, float(row[2]), unix_ts))
+                result.append((ts, 0, float(row[1])))
+                result.append((ts, 1, float(row[2])))
         except (ValueError, IndexError):
             continue
     return result
@@ -104,35 +91,15 @@ def process_data(all_rows: list[list[str]], conn: sqlite3.Connection) -> None:
         print("No valid data found.")
         return
 
-    inserted = 0
-    skipped = 0
-    
-    for row in rows:
-        try:
-            # Проверяем существование по timestamp, sensor_id и unix_timestamp
-            cursor = conn.execute(
-                "SELECT COUNT(*) FROM temperatures WHERE timestamp = ? AND sensor_id = ?",
-                (row[0], row[1])
-            )
-            if cursor.fetchone()[0] > 0:
-                skipped += 1
-                continue
-                
-            conn.execute(
-                "INSERT INTO temperatures (timestamp, sensor_id, temperature) VALUES (?, ?, ?)",
-                (row[0], row[1], row[2])
-            )
-            inserted += 1
-        except sqlite3.IntegrityError:
-            skipped += 1
-    
-    conn.commit()
+    inserted, skipped_dup, skipped_inv = insert_temperatures_batch(conn, rows)
     
     if inserted > 0:
         print(f"Inserted {inserted} new records.")
-    if skipped > 0:
-        print(f"Skipped {skipped} duplicate records.")
-    if inserted == 0 and skipped == 0:
+    if skipped_dup > 0:
+        print(f"Skipped {skipped_dup} duplicate records.")
+    if skipped_inv > 0:
+        print(f"Skipped {skipped_inv} invalid records (error values).")
+    if inserted == 0 and skipped_dup == 0 and skipped_inv == 0:
         print("No data to process.")
 
 
@@ -149,7 +116,7 @@ def main() -> None:
         return
 
     with closing(sqlite3.connect(DATABASE)) as conn:
-        init_db(conn)
+        init_db(DATABASE)
 
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
             time.sleep(2)
