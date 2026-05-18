@@ -51,15 +51,28 @@ def receive_data():
     if not data or "temp0" not in data or "temp1" not in data:
         return "bad request: needs temp0 and temp1", 400
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Используем timestamp от ESP32 если есть, иначе время сервера
+    if "timestamp" in data:
+        timestamp = datetime.fromtimestamp(data["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
     with closing(sqlite3.connect(DATABASE)) as conn:
-        conn.executemany(
-            "INSERT INTO temperatures (timestamp, sensor_id, temperature) VALUES (?, ?, ?)",
-            [(now, 0, data["temp0"]), (now, 1, data["temp1"])],
+        # Проверяем существование записи перед вставкой
+        cursor = conn.execute(
+            "SELECT COUNT(*) FROM temperatures WHERE timestamp = ? AND sensor_id = ?",
+            (timestamp, 0)
         )
-        conn.commit()
+        if cursor.fetchone()[0] == 0:
+            conn.executemany(
+                "INSERT INTO temperatures (timestamp, sensor_id, temperature) VALUES (?, ?, ?)",
+                [(timestamp, 0, data["temp0"]), (timestamp, 1, data["temp1"])],
+            )
+            conn.commit()
+            print(f"[{timestamp}] temp0={data['temp0']} °C  temp1={data['temp1']} °C")
+        else:
+            print(f"[{timestamp}] Skipped duplicate")
 
-    print(f"[{now}] temp0={data['temp0']} °C  temp1={data['temp1']} °C")
     return "ok", 200
 
 

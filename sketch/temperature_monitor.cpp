@@ -185,11 +185,12 @@ void InitWiFi()
                               timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
                               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec );
 
-               // Если RTC доступен, обновляем его время
+               // Обновляем RTC локальным временем (с учетом часового пояса)
                if( rtcOK )
                {
-                    rtc.adjust( DateTime( timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-                                          timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec ) );
+                    time_t now;
+                    time( &now );
+                    rtc.adjust( DateTime( now ) );
                     Serial.println( "RTC time updated from NTP" );
                }
           }
@@ -214,10 +215,11 @@ void SendToServer( const SensorReading& reading )
      http.begin( SERVER_URL );
      http.addHeader( "Content-Type", "application/json" );
 
-     char payload[64];
+     char payload[96];
      snprintf( payload, sizeof( payload ),
-               "{\"temp0\":%.2f,\"temp1\":%.2f}",
-               reading.temp0, reading.temp1 );
+               "{\"temp0\":%.2f,\"temp1\":%.2f,\"timestamp\":%lu}",
+               reading.temp0, reading.temp1,
+               rtcOK ? rtc.now().unixtime() : millis() / 1000 );
 
      int httpCode = http.POST( payload );
      if( httpCode == 200 )
