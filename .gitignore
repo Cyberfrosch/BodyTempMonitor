@@ -43,3 +43,6 @@ sketch/credential.hpp
 
 # Python cache
 __pycache__/
+
+# Hidden directories
+.*/
