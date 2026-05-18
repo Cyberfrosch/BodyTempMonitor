@@ -32,10 +32,10 @@ void InitSensorBinding()
      prefs.begin( "sensors", false );
 
      // Пробуем загрузить сохранённые адреса
-     size_t s0 = prefs.getBytes( "addr0", sensorAddr[0], 8 );
-     size_t s1 = prefs.getBytes( "addr1", sensorAddr[1], 8 );
+     size_t s0 = prefs.getBytes( "addr0", sensorAddr[0], DEVICE_ADDR_SIZE );
+     size_t s1 = prefs.getBytes( "addr1", sensorAddr[1], DEVICE_ADDR_SIZE );
 
-     if( s0 == 8 && s1 == 8 )
+     if( s0 == DEVICE_ADDR_SIZE && s1 == DEVICE_ADDR_SIZE )
      {
           bindingOK = true;
           char buf[17];
@@ -53,7 +53,7 @@ void InitSensorBinding()
      int found = sensors.getDeviceCount();
      Serial.printf( "Found %d sensor(s)\n", found );
 
-     if( found < 2 )
+     if( found < MIN_SENSORS_REQUIRED )
      {
           Serial.println( "Need at least 2 sensors for binding" );
           prefs.end();
@@ -63,8 +63,8 @@ void InitSensorBinding()
      sensors.getAddress( sensorAddr[0], 0 );
      sensors.getAddress( sensorAddr[1], 1 );
 
-     prefs.putBytes( "addr0", sensorAddr[0], 8 );
-     prefs.putBytes( "addr1", sensorAddr[1], 8 );
+     prefs.putBytes( "addr0", sensorAddr[0], DEVICE_ADDR_SIZE );
+     prefs.putBytes( "addr1", sensorAddr[1], DEVICE_ADDR_SIZE );
      prefs.end();
 
      bindingOK = true;
@@ -152,9 +152,9 @@ void InitWiFi()
      WiFi.begin( WIFI_SSID, WIFI_PASS );
      Serial.print( "Connecting to WiFi" );
      int attempts = 0;
-     while( WiFi.status() != WL_CONNECTED && attempts < 20 )
+     while( WiFi.status() != WL_CONNECTED && attempts < WIFI_CONNECT_ATTEMPTS )
      {
-          delay( 500 );
+          delay( WIFI_RETRY_DELAY_MS );
           Serial.print( '.' );
           ++attempts;
      }
@@ -176,6 +176,7 @@ void SendToServer( const SensorReading& reading )
      if( reading.temp0 == DEVICE_DISCONNECTED_C || reading.temp1 == DEVICE_DISCONNECTED_C ) return;
 
      HTTPClient http;
+     http.setTimeout( HTTP_TIMEOUT_MS );
      http.begin( SERVER_URL );
      http.addHeader( "Content-Type", "application/json" );
 
@@ -190,10 +191,27 @@ void SendToServer( const SensorReading& reading )
           digitalWrite( STATUS_LED, HIGH );
           Serial.println( "Sent to server OK" );
      }
-     else
+     else if( httpCode > 0 )
      {
           digitalWrite( STATUS_LED, !digitalRead( STATUS_LED ) );
-          Serial.printf( "Server error: %d\n", httpCode );
+          Serial.printf( "Server HTTP error: %d\n", httpCode );
+     }
+     else
+     {
+          // Retry once on connection error
+          Serial.printf( "Connection error: %d, retrying...\n", httpCode );
+          delay( HTTP_RETRY_DELAY_MS );
+          httpCode = http.POST( payload );
+          if( httpCode == 200 )
+          {
+               digitalWrite( STATUS_LED, HIGH );
+               Serial.println( "Sent to server OK (retry)" );
+          }
+          else
+          {
+               digitalWrite( STATUS_LED, LOW );
+               Serial.printf( "Retry failed: %d\n", httpCode );
+          }
      }
      http.end();
 }
