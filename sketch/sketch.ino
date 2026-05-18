@@ -16,6 +16,7 @@ void setup()
 
      sensors.begin();
 
+     InitRTC();
      InitSensorBinding();
      InitStorage();
      InitWiFi();

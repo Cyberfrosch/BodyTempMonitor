@@ -13,12 +13,34 @@ OneWire           oneWire( TEMP_SENSOR_PIN );
 DallasTemperature sensors( &oneWire );
 Preferences       prefs;
 
+RTC_DS3231 rtc;
 bool rtcOK = false;
-// RTC_DS3231 rtc;
 
 // Адреса датчиков, загруженные из NVS
 static DeviceAddress sensorAddr[2];
 static bool          bindingOK = false;
+
+void InitRTC()
+{
+     if( !rtc.begin() )
+     {
+          Serial.println( "RTC not found" );
+          rtcOK = false;
+          return;
+     }
+
+     if( rtc.lostPower() )
+     {
+          Serial.println( "RTC lost power, setting time to compile time" );
+          rtc.adjust( DateTime( F(__DATE__), F(__TIME__) ) );
+     }
+
+     rtcOK = true;
+     DateTime now = rtc.now();
+     Serial.printf( "RTC initialized: %04d-%02d-%02d %02d:%02d:%02d\n",
+                    now.year(), now.month(), now.day(),
+                    now.hour(), now.minute(), now.second() );
+}
 
 static void AddrToStr( const DeviceAddress addr, char* buf, size_t len )
 {
@@ -113,18 +135,6 @@ void InitStorage()
                f.close();
           }
      }
-
-     // При каждом старте без RTC добавляем маркер сброса
-     if( !rtcOK )
-     {
-          File f = LittleFS.open( CSV_PATH, FILE_APPEND );
-          if( f )
-          {
-               f.println( "RESET,0,0" );
-               f.close();
-               Serial.println( "Reset marker written" );
-          }
-     }
 }
 
 void LogReading( const SensorReading& reading )
@@ -133,9 +143,8 @@ void LogReading( const SensorReading& reading )
      if( !f ) return;
 
      char line[48];
-     // Когда будет RTC: snprintf( line, sizeof(line), "%lu,%.2f,%.2f", rtc.now().unixtime(), ... );
      snprintf( line, sizeof( line ), "%lu,%.2f,%.2f",
-               millis() / 1000,
+               rtcOK ? rtc.now().unixtime() : millis() / 1000,
                reading.temp0,
                reading.temp1 );
      f.println( line );
@@ -163,6 +172,32 @@ void InitWiFi()
      {
           Serial.print( "Wi-Fi connected. IP: " );
           Serial.println( WiFi.localIP() );
+
+          // Синхронизация времени по NTP
+          Serial.print( "Syncing time with NTP..." );
+          configTime( GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER );
+
+          struct tm timeinfo;
+          if( getLocalTime( &timeinfo, 10000 ) )
+          {
+               Serial.println( " OK" );
+               Serial.printf( "NTP time: %04d-%02d-%02d %02d:%02d:%02d\n",
+                              timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec );
+
+               // Обновляем RTC локальным временем (с учетом часового пояса)
+               if( rtcOK )
+               {
+                    time_t now;
+                    time( &now );
+                    rtc.adjust( DateTime( now ) );
+                    Serial.println( "RTC time updated from NTP" );
+               }
+          }
+          else
+          {
+               Serial.println( " Failed" );
+          }
      }
      else
      {
@@ -180,10 +215,11 @@ void SendToServer( const SensorReading& reading )
      http.begin( SERVER_URL );
      http.addHeader( "Content-Type", "application/json" );
 
-     char payload[64];
+     char payload[96];
      snprintf( payload, sizeof( payload ),
-               "{\"temp0\":%.2f,\"temp1\":%.2f}",
-               reading.temp0, reading.temp1 );
+               "{\"temp0\":%.2f,\"temp1\":%.2f,\"timestamp\":%lu}",
+               reading.temp0, reading.temp1,
+               rtcOK ? rtc.now().unixtime() : millis() / 1000 );
 
      int httpCode = http.POST( payload );
      if( httpCode == 200 )

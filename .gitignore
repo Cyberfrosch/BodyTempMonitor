@@ -40,3 +40,6 @@
 
 # Vulnerable data and credentials
 sketch/credential.hpp
+
+# Python cache
+__pycache__/

@@ -14,35 +14,18 @@ from datetime import datetime
 
 from flask import Flask, jsonify, render_template_string, request
 
+from db_common import (
+    DATABASE,
+    init_db,
+    insert_temperature,
+    unix_to_str,
+)
+
 # ---------- Настройки ----------
-DATABASE = "sensor_data.db"
-HOST     = "0.0.0.0"
-PORT     = 5000
+HOST = "0.0.0.0"
+PORT = 5000
 
 app = Flask(__name__)
-
-CREATE_TABLE_SQL = """
-    CREATE TABLE IF NOT EXISTS temperatures (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp   TEXT    NOT NULL,
-        sensor_id   INTEGER NOT NULL,
-        temperature REAL    NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_timestamp ON temperatures(timestamp);
-
-    CREATE TABLE IF NOT EXISTS notes (
-        id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,
-        note      TEXT NOT NULL
-    );
-"""
-
-
-def init_db() -> None:
-    with closing(sqlite3.connect(DATABASE)) as conn:
-        conn.executescript(CREATE_TABLE_SQL)
-        conn.commit()
 
 
 @app.route("/api/data", methods=["POST"])
@@ -51,15 +34,24 @@ def receive_data():
     if not data or "temp0" not in data or "temp1" not in data:
         return "bad request: needs temp0 and temp1", 400
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Используем timestamp от ESP32 если есть, иначе время сервера
+    if "timestamp" in data:
+        timestamp = unix_to_str(data["timestamp"])
+    else:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
     with closing(sqlite3.connect(DATABASE)) as conn:
-        conn.executemany(
-            "INSERT INTO temperatures (timestamp, sensor_id, temperature) VALUES (?, ?, ?)",
-            [(now, 0, data["temp0"]), (now, 1, data["temp1"])],
-        )
+        inserted0 = insert_temperature(conn, timestamp, 0, data["temp0"])
+        inserted1 = insert_temperature(conn, timestamp, 1, data["temp1"])
         conn.commit()
+        
+        if inserted0 and inserted1:
+            print(f"[{timestamp}] temp0={data['temp0']} °C  temp1={data['temp1']} °C")
+        elif not inserted0 and not inserted1:
+            print(f"[{timestamp}] Skipped (duplicate or invalid)")
+        else:
+            print(f"[{timestamp}] Partially inserted (one sensor invalid/duplicate)")
 
-    print(f"[{now}] temp0={data['temp0']} °C  temp1={data['temp1']} °C")
     return "ok", 200
 
 
