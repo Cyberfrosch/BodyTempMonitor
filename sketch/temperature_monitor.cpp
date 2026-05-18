@@ -135,18 +135,6 @@ void InitStorage()
                f.close();
           }
      }
-
-     // При каждом старте без RTC добавляем маркер сброса
-     if( !rtcOK )
-     {
-          File f = LittleFS.open( CSV_PATH, FILE_APPEND );
-          if( f )
-          {
-               f.println( "RESET,0,0" );
-               f.close();
-               Serial.println( "Reset marker written" );
-          }
-     }
 }
 
 void LogReading( const SensorReading& reading )
@@ -155,20 +143,10 @@ void LogReading( const SensorReading& reading )
      if( !f ) return;
 
      char line[48];
-     if( rtcOK )
-     {
-          snprintf( line, sizeof( line ), "%lu,%.2f,%.2f",
-                    rtc.now().unixtime(),
-                    reading.temp0,
-                    reading.temp1 );
-     }
-     else
-     {
-          snprintf( line, sizeof( line ), "%lu,%.2f,%.2f",
-                    millis() / 1000,
-                    reading.temp0,
-                    reading.temp1 );
-     }
+     snprintf( line, sizeof( line ), "%lu,%.2f,%.2f",
+               rtcOK ? rtc.now().unixtime() : millis() / 1000,
+               reading.temp0,
+               reading.temp1 );
      f.println( line );
      f.close();
 
