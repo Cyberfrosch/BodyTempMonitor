@@ -25,6 +25,8 @@ void loop()
 {
      static unsigned long lastSave = 0;
 
+     HandleSerialCommands();
+
      if( millis() - lastSave >= SAVE_INTERVAL_MS )
      {
           lastSave = millis();
@@ -33,6 +35,4 @@ void loop()
           LogReading( reading );
           SendToServer( reading );
      }
-
-     HandleSerialCommands();
 }
