@@ -174,18 +174,17 @@ void LogReading( const SensorReading& reading )
      File f = LittleFS.open( CSV_PATH, FILE_APPEND );
      if( !f ) return;
 
+     unsigned long timestamp = rtcOK ? rtc.now().unixtime() : millis() / 1000;
+
      char line[48];
      snprintf( line, sizeof( line ), "%lu,%.2f,%.2f",
-               rtcOK ? rtc.now().unixtime() : millis() / 1000,
+               timestamp,
                reading.temp0,
                reading.temp1 );
      f.println( line );
      f.close();
 
-     Serial.print( "Logged: " );
-     Serial.print( reading.temp0 );
-     Serial.print( ", " );
-     Serial.println( reading.temp1 );
+     Serial.printf( "Logged: %lu, %.2f, %.2f\n", timestamp, reading.temp0, reading.temp1 );
 }
 
 void InitWiFi()

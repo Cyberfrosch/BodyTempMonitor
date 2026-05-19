@@ -9,6 +9,7 @@ CSV format: unixtime,temp0,temp1 (absolute timestamps from RTC)
 Usage:
   python logger.py            # download and save to DB
   python logger.py --clear    # wipe CSV on ESP32 (no download)
+  python logger.py --monitor  # real-time monitoring of Serial output
 """
 
 import argparse
@@ -16,6 +17,7 @@ import csv
 import sqlite3
 import time
 from contextlib import closing
+from datetime import datetime
 from io import StringIO
 
 import serial
@@ -23,6 +25,7 @@ import serial
 from db_common import (
     DATABASE,
     init_db,
+    insert_temperature,
     insert_temperatures_batch,
     unix_to_str,
 )
@@ -92,7 +95,7 @@ def process_data(all_rows: list[list[str]], conn: sqlite3.Connection) -> None:
         return
 
     inserted, skipped_dup, skipped_inv = insert_temperatures_batch(conn, rows)
-    
+
     if inserted > 0:
         print(f"Inserted {inserted} new records.")
     if skipped_dup > 0:
@@ -103,10 +106,58 @@ def process_data(all_rows: list[list[str]], conn: sqlite3.Connection) -> None:
         print("No data to process.")
 
 
+def monitor_serial() -> None:
+    """Monitor Serial output in real-time and save to database."""
+    print(f"Monitoring Serial port {SERIAL_PORT} at {BAUD_RATE} baud...")
+    print("Press Ctrl+C to stop.\n")
+
+    with closing(sqlite3.connect(DATABASE)) as conn:
+        init_db(DATABASE)
+
+        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as ser:
+            time.sleep(2)
+
+            try:
+                while True:
+                    if ser.in_waiting:
+                        line = ser.readline().decode("utf-8", errors="ignore").strip()
+                        print(line)
+
+                        # Проверяем, является ли строка записью "Logged: timestamp, temp0, temp1"
+                        if line.startswith("Logged: "):
+                            try:
+                                # Парсим "Logged: 1735123456, 36.50, 37.20"
+                                parts = line.replace("Logged: ", "").split(", ")
+                                if len(parts) == 3:
+                                    unix_ts = int(parts[0])
+                                    temp0 = float(parts[1])
+                                    temp1 = float(parts[2])
+
+                                    timestamp = unix_to_str(unix_ts)
+
+                                    inserted0 = insert_temperature(conn, timestamp, 0, temp0)
+                                    inserted1 = insert_temperature(conn, timestamp, 1, temp1)
+                                    conn.commit()
+
+                                    if inserted0 and inserted1:
+                                        print(f"  → Saved to DB: [{timestamp}] temp0={temp0}°C, temp1={temp1}°C")
+                                    elif not inserted0 and not inserted1:
+                                        print(f"  → Skipped (duplicate or invalid)")
+                            except (ValueError, IndexError) as e:
+                                pass
+            except KeyboardInterrupt:
+                print("\n\nMonitoring stopped.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download ESP32 CSV log to SQLite.")
     parser.add_argument("--clear", action="store_true", help="Wipe CSV on ESP32 without downloading")
+    parser.add_argument("--monitor", action="store_true", help="Monitor Serial output in real-time")
     args = parser.parse_args()
+
+    if args.monitor:
+        monitor_serial()
+        return
 
     if args.clear:
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=2) as ser:
