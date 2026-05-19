@@ -20,13 +20,13 @@ bool rtcOK = false;
 static DeviceAddress sensorAddr[2];
 static bool          bindingOK = false;
 
-void InitRTC()
+bool InitRTC()
 {
      if( !rtc.begin() )
      {
-          Serial.println( "RTC not found" );
+          Serial.println( "[FATAL] RTC not found" );
           rtcOK = false;
-          return;
+          return false;
      }
 
      if( rtc.lostPower() )
@@ -40,6 +40,7 @@ void InitRTC()
      Serial.printf( "RTC initialized: %04d-%02d-%02d %02d:%02d:%02d\n",
                     now.year(), now.month(), now.day(),
                     now.hour(), now.minute(), now.second() );
+     return true;
 }
 
 static void AddrToStr( const DeviceAddress addr, char* buf, size_t len )
@@ -49,7 +50,7 @@ static void AddrToStr( const DeviceAddress addr, char* buf, size_t len )
                addr[4], addr[5], addr[6], addr[7] );
 }
 
-void InitSensorBinding()
+bool InitSensors()
 {
      prefs.begin( "sensors", false );
 
@@ -59,6 +60,16 @@ void InitSensorBinding()
 
      if( s0 == DEVICE_ADDR_SIZE && s1 == DEVICE_ADDR_SIZE )
      {
+          // Проверяем, что датчики действительно на шине
+          sensors.begin();
+          if( !sensors.isConnected( sensorAddr[0] ) || !sensors.isConnected( sensorAddr[1] ) )
+          {
+               Serial.println( "Saved sensors not found on bus, rescanning..." );
+               prefs.clear();
+               prefs.end();
+               return false;
+          }
+
           bindingOK = true;
           char buf[17];
           AddrToStr( sensorAddr[0], buf, sizeof( buf ) );
@@ -66,7 +77,7 @@ void InitSensorBinding()
           AddrToStr( sensorAddr[1], buf, sizeof( buf ) );
           Serial.printf( "Sensor 1: %s (from NVS)\n", buf );
           prefs.end();
-          return;
+          return true;
      }
 
      // Адресов нет — сканируем шину
@@ -77,9 +88,10 @@ void InitSensorBinding()
 
      if( found < MIN_SENSORS_REQUIRED )
      {
-          Serial.println( "Need at least 2 sensors for binding" );
+          Serial.printf( "[FATAL] Need at least %d sensors, found %d\n",
+                         MIN_SENSORS_REQUIRED, found );
           prefs.end();
-          return;
+          return false;
      }
 
      sensors.getAddress( sensorAddr[0], 0 );
@@ -95,6 +107,7 @@ void InitSensorBinding()
      Serial.printf( "Sensor 0: %s (saved to NVS)\n", buf );
      AddrToStr( sensorAddr[1], buf, sizeof( buf ) );
      Serial.printf( "Sensor 1: %s (saved to NVS)\n", buf );
+     return true;
 }
 
 SensorReading ReadSensors()
@@ -117,12 +130,30 @@ SensorReading ReadSensors()
      return reading;
 }
 
-void InitStorage()
+bool IsRTCconnected()
+{
+     Wire.beginTransmission( RTC_I2C_ADDR );
+     return ( Wire.endTransmission() == 0 );
+}
+
+void CheckDevices()
+{
+     if( !sensors.isConnected( sensorAddr[0] ) || !sensors.isConnected( sensorAddr[1] ) )
+     {
+          HaltWithError( "Sensors DS18B20 not connected" );
+     }
+     if( !IsRTCconnected() )
+     {
+          HaltWithError( "RTC DS3231 not connected" );
+     }
+}
+
+bool InitStorage()
 {
      if( !LittleFS.begin( true ) )
      {
-          Serial.println( "LittleFS Mount Failed" );
-          return;
+          Serial.println( "[FATAL] LittleFS mount failed" );
+          return false;
      }
      Serial.println( "LittleFS ready." );
 
@@ -135,6 +166,7 @@ void InitStorage()
                f.close();
           }
      }
+     return true;
 }
 
 void LogReading( const SensorReading& reading )
@@ -289,5 +321,22 @@ void HandleSerialCommands()
           prefs.clear();
           prefs.end();
           Serial.println( "Sensor binding cleared. Reboot to rescan." );
+     }
+}
+
+[[noreturn]] void HaltWithError( const char* component )
+{
+     Serial.printf( "\n========================================\n" );
+     Serial.printf( "SYSTEM HALTED: %s\n", component );
+     Serial.printf( "Fix the issue and reboot the device.\n" );
+     Serial.printf( "========================================\n" );
+
+     pinMode( STATUS_LED, OUTPUT );
+     for( ;; )
+     {
+          digitalWrite( STATUS_LED, HIGH );
+          delay( 200 );
+          digitalWrite( STATUS_LED, LOW );
+          delay( 200 );
      }
 }

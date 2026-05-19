@@ -16,9 +16,10 @@ void setup()
 
      sensors.begin();
 
-     InitRTC();
-     InitSensorBinding();
-     InitStorage();
+     if( !InitRTC() )     HaltWithError( "RTC DS3231 init failed" );
+     if( !InitSensors() ) HaltWithError( "Sensors DS18B20 init failed" );
+     if( !InitStorage() ) HaltWithError( "LittleFS init failed" );
+
      InitWiFi();
 }
 
@@ -31,6 +32,8 @@ void loop()
      if( millis() - lastSave >= SAVE_INTERVAL_MS )
      {
           lastSave = millis();
+
+          CheckDevices();
 
           SensorReading reading = ReadSensors();
           LogReading( reading );
