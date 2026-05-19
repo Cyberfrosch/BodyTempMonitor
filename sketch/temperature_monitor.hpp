@@ -94,8 +94,7 @@ void InitSensorBinding();
 SensorReading ReadSensors();
 
 /**
- * @brief Инициализирует LittleFS, создаёт CSV с заголовком если файла нет,
- *        и записывает маркер RESET при старте без RTC.
+ * @brief Инициализирует LittleFS, создаёт CSV с заголовком если файла нет.
  */
 void InitStorage();
 
