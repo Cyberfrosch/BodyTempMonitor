@@ -16,9 +16,73 @@ Preferences       prefs;
 RTC_DS3231 rtc;
 bool rtcOK = false;
 
+Config config;
+
 // Адреса датчиков, загруженные из NVS
 static DeviceAddress sensorAddr[2];
 static bool          bindingOK = false;
+
+void LoadConfig()
+{
+     prefs.begin( "config", true );
+
+     size_t len = prefs.getString( "wifi_ssid", config.wifi_ssid, sizeof( config.wifi_ssid ) );
+     if( len == 0 )
+     {
+          prefs.end();
+          ResetConfig();
+          return;
+     }
+
+     prefs.getString( "wifi_pass", config.wifi_pass, sizeof( config.wifi_pass ) );
+     prefs.getString( "server_url", config.server_url, sizeof( config.server_url ) );
+     prefs.getString( "ntp_server", config.ntp_server, sizeof( config.ntp_server ) );
+
+     config.gmt_offset_sec      = prefs.getLong( "gmt_offset", config.gmt_offset_sec );
+     config.daylight_offset_sec = prefs.getInt( "daylight", config.daylight_offset_sec );
+     config.save_interval_ms    = prefs.getULong( "save_int", config.save_interval_ms );
+     config.http_timeout_ms     = prefs.getULong( "http_tout", config.http_timeout_ms );
+     config.http_retry_delay_ms = prefs.getULong( "http_delay", config.http_retry_delay_ms );
+     config.wifi_connect_attempts = prefs.getInt( "wifi_att", config.wifi_connect_attempts );
+
+     config.valid = true;
+     prefs.end();
+}
+
+void SaveConfig()
+{
+     prefs.begin( "config", false );
+
+     prefs.putString( "wifi_ssid", config.wifi_ssid );
+     prefs.putString( "wifi_pass", config.wifi_pass );
+     prefs.putString( "server_url", config.server_url );
+     prefs.putString( "ntp_server", config.ntp_server );
+
+     prefs.putLong( "gmt_offset", config.gmt_offset_sec );
+     prefs.putInt( "daylight", config.daylight_offset_sec );
+     prefs.putULong( "save_int", config.save_interval_ms );
+     prefs.putULong( "http_tout", config.http_timeout_ms );
+     prefs.putULong( "http_delay", config.http_retry_delay_ms );
+     prefs.putInt( "wifi_att", config.wifi_connect_attempts );
+
+     prefs.end();
+     config.valid = true;
+}
+
+void ResetConfig()
+{
+     strcpy( config.wifi_ssid, "" );
+     strcpy( config.wifi_pass, "" );
+     strcpy( config.server_url, "" );
+     strcpy( config.ntp_server, "pool.ntp.org" );
+     config.gmt_offset_sec      = 7 * 3600;
+     config.daylight_offset_sec = 0;
+     config.save_interval_ms    = 10 * 1000;
+     config.http_timeout_ms     = 5000;
+     config.http_retry_delay_ms = 1000;
+     config.wifi_connect_attempts = 20;
+     config.valid = false;
+}
 
 bool InitRTC()
 {
@@ -189,12 +253,18 @@ void LogReading( const SensorReading& reading )
 
 void InitWiFi()
 {
-     WiFi.begin( WIFI_SSID, WIFI_PASS );
+     if( !config.valid || strlen( config.wifi_ssid ) == 0 )
+     {
+          Serial.println( "WiFi not configured" );
+          return;
+     }
+
+     WiFi.begin( config.wifi_ssid, config.wifi_pass );
      Serial.print( "Connecting to WiFi" );
      int attempts = 0;
-     while( WiFi.status() != WL_CONNECTED && attempts < WIFI_CONNECT_ATTEMPTS )
+     while( WiFi.status() != WL_CONNECTED && attempts < config.wifi_connect_attempts )
      {
-          delay( WIFI_RETRY_DELAY_MS );
+          delay( 500 );
           Serial.print( '.' );
           ++attempts;
      }
@@ -204,9 +274,8 @@ void InitWiFi()
           Serial.print( "Wi-Fi connected. IP: " );
           Serial.println( WiFi.localIP() );
 
-          // Синхронизация времени по NTP
           Serial.print( "Syncing time with NTP..." );
-          configTime( GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER );
+          configTime( config.gmt_offset_sec, config.daylight_offset_sec, config.ntp_server );
 
           struct tm timeinfo;
           if( getLocalTime( &timeinfo, 10000 ) )
@@ -216,7 +285,6 @@ void InitWiFi()
                               timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
                               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec );
 
-               // Обновляем RTC локальным временем (с учетом часового пояса)
                if( rtcOK )
                {
                     time_t now;
@@ -239,11 +307,12 @@ void InitWiFi()
 void SendToServer( const SensorReading& reading )
 {
      if( WiFi.status() != WL_CONNECTED ) return;
+     if( strlen( config.server_url ) == 0 ) return;
      if( reading.temp0 == DEVICE_DISCONNECTED_C || reading.temp1 == DEVICE_DISCONNECTED_C ) return;
 
      HTTPClient http;
-     http.setTimeout( HTTP_TIMEOUT_MS );
-     http.begin( SERVER_URL );
+     http.setTimeout( config.http_timeout_ms );
+     http.begin( config.server_url );
      http.addHeader( "Content-Type", "application/json" );
 
      char payload[96];
@@ -265,9 +334,8 @@ void SendToServer( const SensorReading& reading )
      }
      else
      {
-          // Retry once on connection error
           Serial.printf( "Connection error: %d, retrying...\n", httpCode );
-          delay( HTTP_RETRY_DELAY_MS );
+          delay( config.http_retry_delay_ms );
           httpCode = http.POST( payload );
           if( httpCode == 200 )
           {
@@ -320,6 +388,53 @@ void HandleSerialCommands()
           prefs.clear();
           prefs.end();
           Serial.println( "Sensor binding cleared. Reboot to rescan." );
+     }
+     else if( cmd == "config show" )
+     {
+          Serial.println( "--- CONFIG ---" );
+          Serial.printf( "wifi_ssid=%s\n", config.wifi_ssid );
+          Serial.printf( "wifi_pass=%s\n", strlen(config.wifi_pass) > 0 ? "***" : "" );
+          Serial.printf( "server_url=%s\n", config.server_url );
+          Serial.printf( "ntp_server=%s\n", config.ntp_server );
+          Serial.printf( "gmt_offset=%ld\n", config.gmt_offset_sec );
+          Serial.printf( "daylight=%d\n", config.daylight_offset_sec );
+          Serial.printf( "save_interval=%lu\n", config.save_interval_ms );
+          Serial.printf( "http_timeout=%lu\n", config.http_timeout_ms );
+          Serial.printf( "http_delay=%lu\n", config.http_retry_delay_ms );
+          Serial.printf( "wifi_attempts=%d\n", config.wifi_connect_attempts );
+          Serial.println( "--- END CONFIG ---" );
+     }
+     else if( cmd.startsWith( "config set " ) )
+     {
+          String kv = cmd.substring( 11 );
+          int eq = kv.indexOf( '=' );
+          if( eq < 0 ) { Serial.println( "Usage: config set key=value" ); return; }
+
+          String key = kv.substring( 0, eq );
+          String val = kv.substring( eq + 1 );
+
+          if( key == "wifi_ssid" ) strncpy( config.wifi_ssid, val.c_str(), sizeof(config.wifi_ssid)-1 );
+          else if( key == "wifi_pass" ) strncpy( config.wifi_pass, val.c_str(), sizeof(config.wifi_pass)-1 );
+          else if( key == "server_url" ) strncpy( config.server_url, val.c_str(), sizeof(config.server_url)-1 );
+          else if( key == "ntp_server" ) strncpy( config.ntp_server, val.c_str(), sizeof(config.ntp_server)-1 );
+          else if( key == "gmt_offset" ) config.gmt_offset_sec = val.toInt();
+          else if( key == "daylight" ) config.daylight_offset_sec = val.toInt();
+          else if( key == "save_interval" ) config.save_interval_ms = val.toInt();
+          else if( key == "http_timeout" ) config.http_timeout_ms = val.toInt();
+          else if( key == "http_delay" ) config.http_retry_delay_ms = val.toInt();
+          else if( key == "wifi_attempts" ) config.wifi_connect_attempts = val.toInt();
+          else { Serial.printf( "Unknown key: %s\n", key.c_str() ); return; }
+
+          SaveConfig();
+          Serial.printf( "Set: %s=%s\n", key.c_str(), key == "wifi_pass" ? "***" : val.c_str() );
+     }
+     else if( cmd == "config reset" )
+     {
+          prefs.begin( "config", false );
+          prefs.clear();
+          prefs.end();
+          ResetConfig();
+          Serial.println( "Config reset to defaults" );
      }
 }
 

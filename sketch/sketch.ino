@@ -14,6 +14,8 @@ void setup()
      pinMode( STATUS_LED, OUTPUT );
      digitalWrite( STATUS_LED, LOW );
 
+     LoadConfig();
+     
      sensors.begin();
 
      if( !InitRTC() )     HaltWithError( "RTC DS3231 init failed" );
@@ -29,7 +31,7 @@ void loop()
 
      HandleSerialCommands();
 
-     if( millis() - lastSave >= SAVE_INTERVAL_MS )
+     if( millis() - lastSave >= config.save_interval_ms )
      {
           lastSave = millis();
 

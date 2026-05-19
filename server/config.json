@@ -1,0 +1,11 @@
+{
+  "wifi_ssid": "YourWiFiName",
+  "wifi_pass": "YourWiFiPassword",
+  "server_url": "http://192.168.1.100:5000/api/data",
+  "ntp_server": "pool.ntp.org",
+  "gmt_offset": 25200,
+  "daylight": 0,
+  "save_interval": 10000,
+  "http_timeout": 5000,
+  "wifi_attempts": 20
+}
