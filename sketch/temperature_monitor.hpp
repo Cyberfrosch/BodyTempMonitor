@@ -30,6 +30,12 @@ constexpr uint8_t TEMP_SENSOR_PIN = 4; ///< Пин OneWire
 constexpr uint8_t STATUS_LED      = 2; ///< Встроенный светодиод (Wi-Fi статус)
 ///@}
 
+/// @name Serial
+///@{
+constexpr unsigned long SERIAL_BAUD_RATE   = 115200; ///< Скорость UART
+constexpr size_t        SERIAL_RX_BUF_SIZE = 1024;   ///< RX-буфер
+///@}
+
 /// @name Хранилище
 ///@{
 constexpr char CSV_PATH[] = "/temper.csv"; ///< Путь к файлу журнала в LittleFS
@@ -41,17 +47,17 @@ constexpr char CSV_PATH[] = "/temper.csv"; ///< Путь к файлу журн�
  */
 struct Config
 {
-     char     wifi_ssid[64]            = "";
-     char     wifi_pass[64]            = "";
-     char     server_url[128]          = "";
-     char     ntp_server[64]           = "pool.ntp.org";
-     long     gmt_offset_sec           = 7 * 3600; ///< UTC+7 по умолчанию
-     int      daylight_offset_sec      = 0;
+     char wifi_ssid[64]                = "";
+     char wifi_pass[64]                = "";
+     char server_url[128]              = "";
+     char ntp_server[64]               = "pool.ntp.org";
+     long gmt_offset_sec               = 7 * 3600; ///< UTC+7 по умолчанию
+     int daylight_offset_sec           = 0;
      unsigned long save_interval_ms    = 10 * 1000;
      unsigned long http_timeout_ms     = 5000;
      unsigned long http_retry_delay_ms = 1000;
-     int      wifi_connect_attempts    = 20;
-     bool     valid                    = false; ///< Флаг загрузки из NVS
+     int wifi_connect_attempts         = 20;
+     bool valid                        = false; ///< Флаг загрузки из NVS
 };
 
 extern Config config;

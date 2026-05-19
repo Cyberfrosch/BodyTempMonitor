@@ -5,12 +5,14 @@ The ESP32 stores configuration in NVS (Preferences). This tool provides
 a CLI interface to read/write config values through Serial commands.
 
 Usage:
-  python config_tool.py                    # show current config
-  python config_tool.py --show             # show current config
-  python config_tool.py --set key=value    # set a config key
-  python config_tool.py --reset            # reset to defaults
-  python config_tool.py --interactive      # interactive mode
-  python config_tool.py --upload           # upload from config.json
+  python config_tool.py                            # show current config
+  python config_tool.py --show                     # show current config
+  python config_tool.py --set key=value            # set a config key
+  python config_tool.py --reset                    # reset to defaults
+  python config_tool.py --interactive              # interactive mode
+  python config_tool.py --upload                   # upload from config.json
+  python config_tool.py --upload --file my.json    # upload from custom file
+  python config_tool.py --baud 115200              # set custom baud rate
 """
 
 import argparse
@@ -21,7 +23,7 @@ import serial
 
 SERIAL_PORT = "COM5"
 BAUD_RATE   = 115200
-# CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 
 CONFIG_KEYS = [
     "wifi_ssid",
@@ -45,11 +47,53 @@ def send_command(ser: serial.Serial, cmd: str, wait: float = 1.0) -> str:
     return response.strip()
 
 
+def wait_for_config_block(ser: serial.Serial, start_marker: str, end_marker: str, timeout: float = 10.0) -> str:
+    """Ждет start_marker, затем читает все до end_marker включительно."""
+    ser.timeout = timeout
+    response = ""
+    start_time = time.time()
+
+    while True:
+        if time.time() - start_time > timeout:
+            raise TimeoutError("Timeout waiting for block start")
+        chunk = ser.read(1).decode("utf-8", errors="ignore")
+        response += chunk
+        if start_marker in response:
+            _, _, after = response.partition(start_marker)
+            break
+
+    block = after
+    start_time = time.time()
+    while True:
+        if time.time() - start_time > timeout:
+            raise TimeoutError("Timeout waiting for block end")
+        chunk = ser.read(1).decode("utf-8", errors="ignore")
+        block += chunk
+        if end_marker in block:
+            full_block = start_marker + block[:block.find(end_marker) + len(end_marker)]
+            return full_block
+
+
+def show_config(ser: serial.Serial) -> dict:
+    """Показать и разобрать текущую конфигурацию."""
+    ser.reset_input_buffer()
+    ser.write(b"config show\r\n")
+
+    try:
+        config_block = wait_for_config_block(ser, "--- CONFIG ---", "--- END CONFIG ---")
+    except TimeoutError as e:
+        print(f"Error reading config: {e}")
+        return {}
+
+    print(config_block)
+    config = parse_config(config_block)
+    return config
+
+
 def parse_config(response: str) -> dict:
-    """Parse config from 'config show' response."""
+    """Парсит конфигурацию из ответа."""
     config = {}
     in_config = False
-
     for line in response.split("\n"):
         line = line.strip()
         if line == "--- CONFIG ---":
@@ -60,34 +104,104 @@ def parse_config(response: str) -> dict:
         if in_config and "=" in line:
             key, val = line.split("=", 1)
             config[key] = val
-
     return config
 
 
-def show_config(ser: serial.Serial) -> dict:
-    """Show current configuration."""
-    response = send_command(ser, "config show")
-    print(response)
+def _wait_for_line(ser: serial.Serial, prefixes: tuple, timeout: float) -> str | None:
+    """Читает строки из Serial, пока одна не начнётся с ожидаемого префикса.
 
-    config = parse_config(response)
-    return config
+    Буфер вычитывается инкрементально, поэтому он не переполняется, даже если
+    устройство временно заблокировано (конверсия датчиков, HTTP-таймаут).
+    Возвращает совпавшую строку или None по таймауту.
+    """
+    prev_timeout = ser.timeout
+    ser.timeout = 0.2
+    deadline = time.time() + timeout
+    buf = ""
+    try:
+        while time.time() < deadline:
+            chunk = ser.read(ser.in_waiting or 1).decode("utf-8", errors="ignore")
+            if not chunk:
+                continue
+            buf += chunk
+            while "\n" in buf:
+                line, buf = buf.split("\n", 1)
+                line = line.strip()
+                if any(line.startswith(p) for p in prefixes):
+                    return line
+        return None
+    finally:
+        ser.timeout = prev_timeout
 
 
-def set_config(ser: serial.Serial, key: str, value: str) -> None:
-    """Set a configuration key."""
+def set_config(ser: serial.Serial, key: str, value: str,
+               timeout: float = 15.0, retries: int = 2) -> bool:
+    """Set a configuration key and wait for the device ACK.
+
+    Дожидается подтверждения `Set: <key>=...` от устройства перед возвратом.
+    Это синхронизирует отправку со скоростью прошивки и не даёт командам
+    накапливаться в RX-буфере МК (иначе длинные строки вроде server_url теряются).
+    Возвращает True, если устройство подтвердило изменение.
+    """
     if key not in CONFIG_KEYS:
         print(f"Unknown key: {key}")
         print(f"Valid keys: {', '.join(CONFIG_KEYS)}")
-        return
+        return False
 
-    response = send_command(ser, f"config set {key}={value}")
-    print(response)
+    ack_prefix = f"Set: {key}="
+    unknown_msg = f"Unknown key: {key}"
+    for attempt in range(1, retries + 1):
+        ser.reset_input_buffer()
+        ser.write((f"config set {key}={value}\r\n").encode())
+        line = _wait_for_line(ser, (ack_prefix, unknown_msg), timeout)
+        if line is not None:
+            print(line)
+            return line.startswith(ack_prefix)
+        if attempt < retries:
+            print(f"  [retry {attempt}/{retries}] no ACK for '{key}', resending...")
+    print(f"  [fail] device did not acknowledge '{key}'")
+    return False
 
 
 def reset_config(ser: serial.Serial) -> None:
     """Reset configuration to defaults."""
     response = send_command(ser, "config reset")
     print(response)
+
+
+def load_config_file(path: str) -> dict:
+    """Загружает и разбирает JSON-файл конфигурации."""
+    if not os.path.exists(path):
+        print(f"Error: config file not found: {path}")
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Error: invalid JSON in {path}: {e}")
+        return {}
+
+
+def upload_config(ser: serial.Serial, config: dict) -> None:
+    """Загружает конфигурацию из словаря на устройство через Serial."""
+    if not config:
+        print("Nothing to upload: config is empty.")
+        return
+
+    ok = 0
+    total = 0
+    for key, value in config.items():
+        if key not in CONFIG_KEYS:
+            print(f"  [skip] Unknown key: {key}")
+            continue
+        total += 1
+        display_value = "***" if key == "wifi_pass" else str(value)
+        print(f"  Setting {key} = {display_value}")
+        if set_config(ser, key, str(value)):
+            ok += 1
+
+    print(f"\nUpload complete ({ok}/{total} keys acknowledged). Current device config:")
+    show_config(ser)
 
 
 def interactive_mode(ser: serial.Serial) -> None:
@@ -133,19 +247,26 @@ def interactive_mode(ser: serial.Serial) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Manage ESP32 configuration via Serial.")
+    parser = argparse.ArgumentParser(
+        description="Manage ESP32 configuration via Serial",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--show", action="store_true", help="Show current configuration")
     parser.add_argument("--set", metavar="KEY=VALUE", help="Set a configuration key")
     parser.add_argument("--reset", action="store_true", help="Reset to defaults")
     parser.add_argument("--interactive", "-i", action="store_true", help="Interactive mode")
+    parser.add_argument("--upload", action="store_true", help="Upload configuration from config.json")
+    parser.add_argument("--file", default=CONFIG_FILE, metavar="PATH", help=f"JSON file to upload (default: config.json)")
+    parser.add_argument("--baud", type=int, default=BAUD_RATE,
+                        help=f"Baud rate (default: {BAUD_RATE}); must match SERIAL_BAUD_RATE in firmware")
     parser.add_argument("--port", default=SERIAL_PORT, help=f"Serial port (default: {SERIAL_PORT})")
     args = parser.parse_args()
 
     # Default to show if no action specified
-    if not (args.show or args.set or args.reset or args.interactive):
+    if not (args.show or args.set or args.reset or args.interactive or args.upload):
         args.show = True
 
-    with serial.Serial(args.port, BAUD_RATE, timeout=2) as ser:
+    with serial.Serial(args.port, args.baud, timeout=2) as ser:
         time.sleep(2)  # Wait for connection
 
         if args.show:
@@ -160,6 +281,9 @@ def main() -> None:
             reset_config(ser)
         elif args.interactive:
             interactive_mode(ser)
+        elif args.upload:
+            config = load_config_file(args.file)
+            upload_config(ser, config)
 
 
 if __name__ == "__main__":

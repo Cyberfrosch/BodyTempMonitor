@@ -10,12 +10,13 @@
 
 void setup()
 {
-     Serial.begin( 115200 );
+     Serial.setRxBufferSize( SERIAL_RX_BUF_SIZE );
+     Serial.begin( SERIAL_BAUD_RATE );
      pinMode( STATUS_LED, OUTPUT );
      digitalWrite( STATUS_LED, LOW );
 
      LoadConfig();
-     
+
      sensors.begin();
 
      if( !InitRTC() )     HaltWithError( "RTC DS3231 init failed" );
