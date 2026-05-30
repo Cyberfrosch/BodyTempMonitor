@@ -8,43 +8,33 @@ server.py — Flask HTTP-сервер для приёма данных с ESP32.
   POST /api/notes      — добавление заметки
 """
 
-import sqlite3
-from contextlib import closing
 from datetime import datetime
 
 from flask import Flask, jsonify, render_template_string, request
+from flask.views import MethodView
 
-from db_common import (
-    DATABASE,
-    init_db,
-    insert_temperature,
-    unix_to_str,
-)
+from db_common import DATABASE, Database
 
 # ---------- Настройки ----------
 HOST = "0.0.0.0"
 PORT = 5000
 
-app = Flask(__name__)
+class DataAPI(MethodView):
+    """Приём данных с датчиков ESP32 (POST /api/data)."""
 
+    def __init__(self, db: Database) -> None:
+        self.db = db
 
-@app.route("/api/data", methods=["POST"])
-def receive_data():
-    data = request.get_json()
-    if not data or "temp0" not in data or "temp1" not in data:
-        return "bad request: needs temp0 and temp1", 400
+    def post(self):
+        data = request.get_json()
+        if not data or "temp0" not in data or "temp1" not in data or "timestamp" not in data:
+            return "bad request: needs temp0, temp1, and timestamp", 400
 
-    # Используем timestamp от ESP32 если есть, иначе время сервера
-    if "timestamp" in data:
-        timestamp = unix_to_str(data["timestamp"])
-    else:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    with closing(sqlite3.connect(DATABASE)) as conn:
-        inserted0 = insert_temperature(conn, timestamp, 0, data["temp0"])
-        inserted1 = insert_temperature(conn, timestamp, 1, data["temp1"])
-        conn.commit()
-        
+        timestamp = Database.unix_to_str(data["timestamp"])
+
+        inserted0 = self.db.insert_temperature(timestamp, 0, data["temp0"])
+        inserted1 = self.db.insert_temperature(timestamp, 1, data["temp1"])
+
         if inserted0 and inserted1:
             print(f"[{timestamp}] temp0={data['temp0']} °C  temp1={data['temp1']} °C")
         elif not inserted0 and not inserted1:
@@ -52,46 +42,54 @@ def receive_data():
         else:
             print(f"[{timestamp}] Partially inserted (one sensor invalid/duplicate)")
 
-    return "ok", 200
+        return "ok", 200
 
 
-@app.route("/api/chart-data")
-def chart_data():
-    with closing(sqlite3.connect(DATABASE)) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT timestamp, sensor_id, temperature
-            FROM temperatures
-            ORDER BY timestamp DESC
-        """)
-        rows = [dict(row) for row in cursor.fetchall()]
-    return jsonify(rows)
+class ChartDataAPI(MethodView):
+    """Данные для графика температуры (GET /api/chart-data)."""
+
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def get(self):
+        return jsonify(self.db.fetch_temperatures())
 
 
-@app.route("/api/notes", methods=["POST"])
-def add_note():
-    data = request.get_json()
-    if not data or "note" not in data:
-        return "bad request: needs note", 400
+class NotesAPI(MethodView):
+    """Добавление заметок (POST /api/notes)."""
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with closing(sqlite3.connect(DATABASE)) as conn:
-        conn.execute("INSERT INTO notes (timestamp, note) VALUES (?, ?)", (now, data["note"]))
-        conn.commit()
+    def __init__(self, db: Database) -> None:
+        self.db = db
 
-    return "ok", 200
+    def post(self):
+        data = request.get_json()
+        if not data or "note" not in data:
+            return "bad request: needs note", 400
+        self.db.insert_note(data["note"])
+        return "ok", 200
 
 
-@app.route("/dashboard")
-def dashboard():
-    with closing(sqlite3.connect(DATABASE)) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT timestamp, note FROM notes ORDER BY timestamp DESC LIMIT 20")
-        notes = [dict(row) for row in cursor.fetchall()]
+class DashboardView(MethodView):
+    """Веб-дашборд с графиком и заметками (GET /dashboard)."""
 
-    return render_template_string(DASHBOARD_HTML, notes=notes)
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    def get(self):
+        notes = self.db.fetch_notes(limit=20)
+        return render_template_string(DASHBOARD_HTML, notes=notes)
+
+
+def create_app(db: Database) -> Flask:
+    """Создаёт и настраивает Flask-приложение, регистрируя все представления."""
+    app = Flask(__name__)
+
+    app.add_url_rule("/api/data",       view_func=DataAPI.as_view("data_api", db),        methods=["POST"])
+    app.add_url_rule("/api/chart-data", view_func=ChartDataAPI.as_view("chart_data", db), methods=["GET"])
+    app.add_url_rule("/api/notes",      view_func=NotesAPI.as_view("notes_api", db),      methods=["POST"])
+    app.add_url_rule("/dashboard",      view_func=DashboardView.as_view("dashboard", db), methods=["GET"])
+
+    return app
 
 
 DASHBOARD_HTML = """
@@ -287,7 +285,8 @@ DASHBOARD_HTML = """
 
 
 if __name__ == "__main__":
-    init_db()
+    db = Database(DATABASE)
+    db.init_schema()
     print(f"Server running on http://{HOST}:{PORT}")
     print(f"Dashboard: http://{HOST}:{PORT}/dashboard")
-    app.run(host=HOST, port=PORT, threaded=True)
+    create_app(db).run(host=HOST, port=PORT, threaded=True)
