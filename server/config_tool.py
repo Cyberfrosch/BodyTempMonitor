@@ -20,9 +20,10 @@ import json
 import os
 import time
 
+from app_paths import external_path
 from serial_device import BAUD_RATE, SERIAL_PORT, SerialDevice
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+CONFIG_FILE = external_path("config.json")
 
 CONFIG_KEYS = [
     "wifi_ssid",
@@ -186,37 +187,46 @@ class ConfigClient:
                 break
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
+def _add_config_args(p: argparse.ArgumentParser) -> None:
+    """Регистрирует аргументы конфигурационного CLI в переданном парсере."""
+    p.add_argument("--show",        action="store_true", help="Show current configuration")
+    p.add_argument("--set",         metavar="KEY=VALUE", help="Set a configuration key")
+    p.add_argument("--reset",       action="store_true", help="Reset to defaults")
+    p.add_argument("--interactive", "-i", action="store_true", help="Interactive mode")
+    p.add_argument("--upload",      action="store_true", help="Upload configuration from config.json")
+    p.add_argument("--file",        default=CONFIG_FILE, metavar="PATH",
+                   help="JSON file to upload (default: config.json)")
+    p.add_argument("--baud",        type=int, default=BAUD_RATE,
+                   help=f"Baud rate (default: {BAUD_RATE}); must match SERIAL_BAUD_RATE in firmware")
+    p.add_argument("--port",        default=SERIAL_PORT,
+                   help=f"Serial port (default: {SERIAL_PORT})")
+
+
+def add_config_subparser(subparsers) -> None:
+    """Добавляет подпарсер 'config' в составной парсер (tool.py)."""
+    p = subparsers.add_parser(
+        "config",
         description="Manage ESP32 configuration via Serial.",
         epilog=(
             "examples:\n"
-            "  python config_tool.py                       # show current config\n"
-            "  python config_tool.py --set wifi_ssid=Home  # set one key\n"
-            "  python config_tool.py --upload              # upload from config.json\n"
-            "  python config_tool.py --upload --file my.json\n"
-            "  python config_tool.py --reset\n"
-            "  python config_tool.py --interactive\n"
-            "  python config_tool.py --port COM3 --baud 115200 --show\n"
+            "  tool config                              # show current config\n"
+            "  tool config --set wifi_ssid=Home         # set one key\n"
+            "  tool config --upload                     # upload from config.json\n"
+            "  tool config --upload --file my.json\n"
+            "  tool config --reset\n"
+            "  tool config --interactive\n"
+            "  tool config --port COM3 --baud 115200 --show\n"
             "\n"
             f"valid config keys: {', '.join(CONFIG_KEYS)}"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Manage ESP32 configuration",
     )
-    parser.add_argument("--show",        action="store_true", help="Show current configuration")
-    parser.add_argument("--set",         metavar="KEY=VALUE", help="Set a configuration key")
-    parser.add_argument("--reset",       action="store_true", help="Reset to defaults")
-    parser.add_argument("--interactive", "-i", action="store_true", help="Interactive mode")
-    parser.add_argument("--upload",      action="store_true", help="Upload configuration from config.json")
-    parser.add_argument("--file",        default=CONFIG_FILE, metavar="PATH",
-                        help="JSON file to upload (default: config.json)")
-    parser.add_argument("--baud",        type=int, default=BAUD_RATE,
-                        help=f"Baud rate (default: {BAUD_RATE}); must match SERIAL_BAUD_RATE in firmware")
-    parser.add_argument("--port",        default=SERIAL_PORT,
-                        help=f"Serial port (default: {SERIAL_PORT})")
-    args = parser.parse_args()
+    _add_config_args(p)
 
-    # По умолчанию показываем конфигурацию, если не указано другое действие
+
+def run_config(args: argparse.Namespace) -> None:
+    """Выполняет подкоманду 'config' с разобранными аргументами."""
     if not (args.show or args.set or args.reset or args.interactive or args.upload):
         args.show = True
 
@@ -238,6 +248,28 @@ def main() -> None:
         elif args.upload:
             config = ConfigClient.load_file(args.file)
             client.upload(config)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Manage ESP32 configuration via Serial.",
+        epilog=(
+            "examples:\n"
+            "  python config_tool.py                       # show current config\n"
+            "  python config_tool.py --set wifi_ssid=Home  # set one key\n"
+            "  python config_tool.py --upload              # upload from config.json\n"
+            "  python config_tool.py --upload --file my.json\n"
+            "  python config_tool.py --reset\n"
+            "  python config_tool.py --interactive\n"
+            "  python config_tool.py --port COM3 --baud 115200 --show\n"
+            "\n"
+            f"valid config keys: {', '.join(CONFIG_KEYS)}"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _add_config_args(parser)
+    args = parser.parse_args()
+    run_config(args)
 
 
 if __name__ == "__main__":

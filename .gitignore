@@ -43,6 +43,15 @@ sketch/credential.hpp
 
 # Python cache
 __pycache__/
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+
+# PyInstaller build artifacts (spec files are kept — they are part of the repo)
+build/
+dist/
 
 # Hidden directories
 .*/

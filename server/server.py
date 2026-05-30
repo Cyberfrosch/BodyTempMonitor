@@ -13,6 +13,7 @@ from datetime import datetime
 from flask import Flask, jsonify, render_template, request
 from flask.views import MethodView
 
+from app_paths import resource_path
 from db_common import DATABASE, Database
 
 # ---------- Настройки ----------
@@ -82,7 +83,7 @@ class DashboardView(MethodView):
 
 def create_app(db: Database) -> Flask:
     """Создаёт и настраивает Flask-приложение, регистрируя все представления."""
-    app = Flask(__name__)
+    app = Flask(__name__, template_folder=resource_path("templates"))
 
     app.add_url_rule("/api/data",       view_func=DataAPI.as_view("data_api", db),        methods=["POST"])
     app.add_url_rule("/api/chart-data", view_func=ChartDataAPI.as_view("chart_data", db), methods=["GET"])

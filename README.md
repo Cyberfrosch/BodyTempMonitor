@@ -255,6 +255,65 @@ python server/config_tool.py --interactive
 - Температуры вне диапазона -50°C..+100°C игнорируются.
 - Дубликаты (одинаковые timestamp + sensor_id) не вставляются.
 
+## Сборка и развёртывание бинарей
+
+> **Важно:** PyInstaller не поддерживает кросс-компиляцию. Бинарь для Windows нужно
+> собирать на Windows, для Linux — на Linux.
+
+### Состав поставки
+
+После сборки в `dist/` окажутся:
+
+| Файл            | Назначение                                      |
+|-----------------|-------------------------------------------------|
+| `server(.exe)`  | HTTP-сервер                                     |
+| `tool(.exe)`    | CLI-утилита: `config` + `log`                   |
+| `config.json`   | Файл конфигурации — отредактируйте перед использованием |
+
+`sensor_data.db` создаётся автоматически в той же папке, что и запущенный бинарь.
+Оба бинаря при запуске из одной директории используют **одну и ту же** БД.
+
+### Сборка на Windows
+
+```powershell
+.\build.ps1
+```
+
+### Сборка на Linux
+
+```bash
+bash build.sh
+```
+
+Скрипты создают venv, устанавливают зависимости из `requirements.txt` и
+`requirements-build.txt` (включая `pyinstaller`), затем запускают оба spec-файла.
+
+### Запуск бинарей
+
+```
+dist\server.exe                        # запуск HTTP-сервера (Windows)
+dist\tool.exe config --show            # показать конфигурацию ESP32
+dist\tool.exe config --upload          # загрузить config.json на устройство
+dist\tool.exe log                      # выгрузить CSV-журнал в БД
+dist\tool.exe log --monitor            # мониторинг Serial в реальном времени
+```
+
+```bash
+dist/server                            # запуск HTTP-сервера (Linux)
+dist/tool config --show
+dist/tool log --monitor
+```
+
+Прямые запуски Python-скриптов по-прежнему работают:
+
+```bash
+python server/server.py
+python server/config_tool.py --show
+python server/logger.py --monitor
+python server/tool.py config --show
+python server/tool.py log
+```
+
 ---
 
 **Примечание:** Устройство предназначено только для образовательных и исследовательских целей. Не используйте его для реального медицинского мониторинга без соответствующей сертификации.

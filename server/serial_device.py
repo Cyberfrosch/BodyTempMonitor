@@ -10,7 +10,7 @@ import time
 import serial
 
 SERIAL_PORT = "COM5"
-BAUD_RATE   = 115200  # должно совпадать с SERIAL_BAUD_RATE в sketch/temperature_monitor.hpp
+BAUD_RATE   = 115200
 
 
 class SerialDevice:

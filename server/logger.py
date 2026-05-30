@@ -139,12 +139,31 @@ class SerialMonitor:
             print("\n\nMonitoring stopped.")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Download ESP32 CSV log to SQLite.")
-    parser.add_argument("--clear",   action="store_true", help="Wipe CSV on ESP32 without downloading")
-    parser.add_argument("--monitor", action="store_true", help="Monitor Serial output in real-time")
-    args = parser.parse_args()
+def _add_log_args(p: argparse.ArgumentParser) -> None:
+    """Регистрирует аргументы команды загрузки журнала в переданном парсере."""
+    p.add_argument("--clear",   action="store_true", help="Wipe CSV on ESP32 without downloading")
+    p.add_argument("--monitor", action="store_true", help="Monitor Serial output in real-time")
 
+
+def add_log_subparser(subparsers) -> None:
+    """Добавляет подпарсер 'log' в составной парсер (tool.py)."""
+    p = subparsers.add_parser(
+        "log",
+        description="Download ESP32 CSV log to SQLite.",
+        epilog=(
+            "examples:\n"
+            "  tool log            # download CSV log and save to DB\n"
+            "  tool log --clear    # wipe CSV on ESP32\n"
+            "  tool log --monitor  # monitor Serial output in real-time\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        help="Download CSV log or monitor Serial output",
+    )
+    _add_log_args(p)
+
+
+def run_log(args: argparse.Namespace) -> None:
+    """Выполняет подкоманду 'log' с разобранными аргументами."""
     db = Database(DATABASE)
     db.init_schema()
 
@@ -193,6 +212,13 @@ def main() -> None:
         return
 
     downloader.process(all_rows)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Download ESP32 CSV log to SQLite.")
+    _add_log_args(parser)
+    args = parser.parse_args()
+    run_log(args)
 
 
 if __name__ == "__main__":
