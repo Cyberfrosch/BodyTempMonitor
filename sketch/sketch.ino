@@ -2,11 +2,22 @@
  * @file      sketch.ino
  * @brief     Мониторинг температуры тела с двумя датчиками DS18B20.
  * @details   Периодическая запись в CSV (LittleFS), отправка на HTTP-сервер,
- *            Serial-команды "download" и "clear".
- *            Заглушка RTC DS3231 — раскомментировать при наличии модуля.
+ *            обработка Serial-команд.
  */
 
-#include "temperature_monitor.hpp"
+#include "system.hpp"
+#include "config_store.hpp"
+#include "temp_sensors.hpp"
+#include "clock_rtc.hpp"
+#include "storage.hpp"
+#include "network.hpp"
+#include "serial_commands.hpp"
+
+static void CheckDevices()
+{
+     if( !AreSensorsConnected() ) HaltWithError( "Sensors DS18B20 not connected" );
+     if( !IsRTCconnected() )      HaltWithError( "RTC DS3231 not connected" );
+}
 
 void setup()
 {
@@ -17,11 +28,9 @@ void setup()
 
      LoadConfig();
 
-     sensors.begin();
-
-     if( !InitRTC() )     HaltWithError( "RTC DS3231 init failed" );
-     if( !InitSensors() ) HaltWithError( "Sensors DS18B20 init failed" );
-     if( !InitStorage() ) HaltWithError( "LittleFS init failed" );
+     if( !InitRTC() )      HaltWithError( "RTC DS3231 init failed" );
+     if( !InitSensors() )  HaltWithError( "Sensors DS18B20 init failed" );
+     if( !InitStorage() )  HaltWithError( "LittleFS init failed" );
 
      InitWiFi();
 }
