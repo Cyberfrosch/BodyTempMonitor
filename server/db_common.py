@@ -1,7 +1,7 @@
 """
-db_common.py — Common database logic for server and logger.
+db_common.py — Общая логика работы с базой данных для server.py и logger.py.
 
-Shared functions for database initialization, data validation and insertion.
+Вспомогательные функции инициализации БД, валидации данных и вставки записей.
 """
 
 import sqlite3
@@ -34,14 +34,14 @@ INVALID_TEMP_VALUE = -127.0  # Значение ошибки датчика DS18
 
 
 def init_db(database: str = DATABASE) -> None:
-    """Initialize database with required tables and indexes."""
+    """Инициализирует базу данных: создаёт таблицы и индексы при их отсутствии."""
     with closing(sqlite3.connect(database)) as conn:
         conn.executescript(CREATE_TABLE_SQL)
         conn.commit()
 
 
 def is_valid_temperature(temp: float) -> bool:
-    """Check if temperature value is valid (not error code or out of range)."""
+    """Проверяет корректность значения температуры (не код ошибки и не выход за диапазон)."""
     if temp == INVALID_TEMP_VALUE:
         return False
     if temp < MIN_VALID_TEMP or temp > MAX_VALID_TEMP:
@@ -50,12 +50,12 @@ def is_valid_temperature(temp: float) -> bool:
 
 
 def unix_to_str(unix_timestamp: int) -> str:
-    """Convert Unix timestamp to string format YYYY-MM-DD HH:MM:SS."""
+    """Конвертирует Unix-timestamp в строку формата YYYY-MM-DD HH:MM:SS."""
     return datetime.fromtimestamp(unix_timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def record_exists(conn: sqlite3.Connection, timestamp: str, sensor_id: int) -> bool:
-    """Check if record with given timestamp and sensor_id already exists."""
+    """Проверяет, существует ли запись с заданными timestamp и sensor_id."""
     cursor = conn.execute(
         "SELECT COUNT(*) FROM temperatures WHERE timestamp = ? AND sensor_id = ?",
         (timestamp, sensor_id)
@@ -65,8 +65,8 @@ def record_exists(conn: sqlite3.Connection, timestamp: str, sensor_id: int) -> b
 
 def insert_temperature(conn: sqlite3.Connection, timestamp: str, sensor_id: int, temperature: float) -> bool:
     """
-    Insert temperature record if valid and not duplicate.
-    Returns True if inserted, False if skipped.
+    Вставляет запись температуры, если она корректна и не является дубликатом.
+    Возвращает True при вставке, False при пропуске.
     """
     if not is_valid_temperature(temperature):
         return False
@@ -83,13 +83,13 @@ def insert_temperature(conn: sqlite3.Connection, timestamp: str, sensor_id: int,
 
 def insert_temperatures_batch(conn: sqlite3.Connection, records: list[tuple]) -> tuple[int, int, int]:
     """
-    Insert multiple temperature records.
+    Вставляет несколько записей температуры.
 
-    Args:
-        records: List of tuples (timestamp, sensor_id, temperature)
+    Аргументы:
+        records: список кортежей (timestamp, sensor_id, temperature)
 
-    Returns:
-        Tuple of (inserted_count, skipped_duplicates, skipped_invalid)
+    Возвращает:
+        Кортеж (inserted_count, skipped_duplicates, skipped_invalid)
     """
     inserted = 0
     skipped_duplicates = 0

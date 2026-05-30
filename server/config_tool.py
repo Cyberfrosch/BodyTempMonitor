@@ -1,8 +1,8 @@
 """
-config_tool.py — Manage ESP32 runtime configuration via Serial.
+config_tool.py — Управление конфигурацией ESP32 через Serial.
 
-The ESP32 stores configuration in NVS (Preferences). This tool provides
-a CLI interface to read/write config values through Serial commands.
+ESP32 хранит конфигурацию в NVS (Preferences). Утилита предоставляет
+CLI-интерфейс для чтения и записи параметров через Serial-команды.
 
 Usage:
   python config_tool.py                            # show current config
@@ -40,7 +40,7 @@ CONFIG_KEYS = [
 
 
 def send_command(ser: serial.Serial, cmd: str, wait: float = 1.0) -> str:
-    """Send command and return response."""
+    """Отправляет команду и возвращает ответ."""
     ser.write((cmd + "\r\n").encode())
     time.sleep(wait)
     response = ser.read(ser.in_waiting).decode("utf-8", errors="ignore")
@@ -136,7 +136,7 @@ def _wait_for_line(ser: serial.Serial, prefixes: tuple, timeout: float) -> str |
 
 def set_config(ser: serial.Serial, key: str, value: str,
                timeout: float = 15.0, retries: int = 2) -> bool:
-    """Set a configuration key and wait for the device ACK.
+    """Устанавливает параметр конфигурации и ожидает подтверждения от устройства.
 
     Дожидается подтверждения `Set: <key>=...` от устройства перед возвратом.
     Это синхронизирует отправку со скоростью прошивки и не даёт командам
@@ -164,7 +164,7 @@ def set_config(ser: serial.Serial, key: str, value: str,
 
 
 def reset_config(ser: serial.Serial) -> None:
-    """Reset configuration to defaults."""
+    """Сбрасывает конфигурацию к значениям по умолчанию."""
     response = send_command(ser, "config reset")
     print(response)
 
@@ -205,7 +205,7 @@ def upload_config(ser: serial.Serial, config: dict) -> None:
 
 
 def interactive_mode(ser: serial.Serial) -> None:
-    """Interactive configuration mode."""
+    """Интерактивный режим настройки конфигурации."""
     print("Interactive configuration mode. Type 'help' for commands, 'quit' to exit.\n")
 
     while True:
@@ -262,12 +262,12 @@ def main() -> None:
     parser.add_argument("--port", default=SERIAL_PORT, help=f"Serial port (default: {SERIAL_PORT})")
     args = parser.parse_args()
 
-    # Default to show if no action specified
+    # По умолчанию показываем конфигурацию, если не указано другое действие
     if not (args.show or args.set or args.reset or args.interactive or args.upload):
         args.show = True
 
     with serial.Serial(args.port, args.baud, timeout=2) as ser:
-        time.sleep(2)  # Wait for connection
+        time.sleep(2)  # ждём установки соединения
 
         if args.show:
             show_config(ser)

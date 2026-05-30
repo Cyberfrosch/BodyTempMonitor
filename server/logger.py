@@ -1,10 +1,10 @@
 """
-logger.py — Download CSV log from ESP32 via Serial and save to SQLite.
+logger.py — Загрузка CSV-журнала с ESP32 через Serial и сохранение в SQLite.
 
-Sends the "download" command to Serial Monitor, reads CSV between
-BEGIN/END FILE markers and saves to a local DB.
+Отправляет команду "download" в Serial Monitor, считывает CSV между
+маркерами BEGIN/END FILE и сохраняет данные в локальную БД.
 
-CSV format: unixtime,temp0,temp1 (absolute timestamps from RTC)
+Формат CSV: unixtime,temp0,temp1 (абсолютные метки времени от RTC)
 
 Usage:
   python logger.py            # download and save to DB
@@ -30,7 +30,7 @@ from db_common import (
     unix_to_str,
 )
 
-# ---------- Settings ----------
+# ---------- Настройки ----------
 SERIAL_PORT = "COM5"
 BAUD_RATE   = 115200
 
@@ -39,7 +39,7 @@ KNOWN_HEADERS = {"unixtime,temp0,temp1", "reltime,temp0,temp1"}
 
 
 def is_unix_timestamp(value: str) -> bool:
-    """Check if value looks like a Unix timestamp (10 digits, year 2000+)."""
+    """Проверяет, похоже ли значение на Unix-timestamp (10 цифр, год ≥ 2000)."""
     try:
         ts = int(value)
         return ts > 946684800 and len(value) >= 10  # 2000-01-01
@@ -48,7 +48,7 @@ def is_unix_timestamp(value: str) -> bool:
 
 
 def fetch_csv(ser: serial.Serial) -> list[str]:
-    """Sends 'download' and returns lines between BEGIN/END FILE markers."""
+    """Отправляет 'download' и возвращает строки между маркерами BEGIN/END FILE."""
     ser.write(b"download\r\n")
     time.sleep(1)
 
@@ -65,7 +65,7 @@ def fetch_csv(ser: serial.Serial) -> list[str]:
 
 
 def clear_csv(ser: serial.Serial) -> None:
-    """Sends 'clear' command to ESP32 to wipe the CSV log."""
+    """Отправляет команду 'clear' на ESP32 для очистки CSV-журнала."""
     ser.write(b"clear\r\n")
     time.sleep(1)
     response = ser.read(ser.in_waiting).decode("utf-8", errors="ignore").strip()
@@ -73,7 +73,7 @@ def clear_csv(ser: serial.Serial) -> None:
 
 
 def rows_to_db(rows: list[list[str]]) -> list[tuple]:
-    """Converts rows with Unix timestamps to DB tuples."""
+    """Преобразует строки с Unix-timestamps в кортежи для вставки в БД."""
     result = []
     for row in rows:
         try:
@@ -88,7 +88,7 @@ def rows_to_db(rows: list[list[str]]) -> list[tuple]:
 
 
 def process_data(all_rows: list[list[str]], conn: sqlite3.Connection) -> None:
-    """Process CSV with Unix timestamps from RTC."""
+    """Обрабатывает CSV-данные с Unix-timestamps от RTC и сохраняет в БД."""
     rows = rows_to_db(all_rows)
     if not rows:
         print("No valid data found.")
@@ -107,7 +107,7 @@ def process_data(all_rows: list[list[str]], conn: sqlite3.Connection) -> None:
 
 
 def monitor_serial() -> None:
-    """Monitor Serial output in real-time and save to database."""
+    """Мониторинг вывода Serial в реальном времени с сохранением данных в БД."""
     print(f"Monitoring Serial port {SERIAL_PORT} at {BAUD_RATE} baud...")
     print("Press Ctrl+C to stop.\n")
 
