@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for the combined config+log CLI binary.
 # Run from the repository root: pyinstaller tool.spec
-# config.json is NOT bundled — place it next to the binary in dist/.
+# config.json is NOT bundled - place it next to the binary in dist/.
 
 a = Analysis(
     ['server/tool.py'],

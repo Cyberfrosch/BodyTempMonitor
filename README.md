@@ -13,8 +13,8 @@
 - Синхронизация времени по NTP при подключении к Wi-Fi.
 - Встроенный светодиод (пин 2) сигнализирует о статусе отправки на сервер.
 - Serial-команды для работы с журналом:
-  - `download` — вывести содержимое CSV в Serial Monitor.
-  - `clear` — очистить CSV и пересоздать с заголовком.
+  - `download` - вывести содержимое CSV в Serial Monitor.
+  - `clear` - очистить CSV и пересоздать с заголовком.
 
 ## Аппаратное обеспечение
 
@@ -55,44 +55,44 @@
 
 ### Структура проекта
 
-- `sketch.ino` — главный файл, `setup()` и `loop()`.
-- `temperature_monitor.hpp` — константы, структура `SensorReading`, прототипы функций.
-- `temperature_monitor.cpp` — реализация: чтение датчиков, LittleFS, Wi-Fi, HTTP, Serial-команды.
-- `sketch/credential.hpp` — учетные данные Wi-Fi и URL сервера (не включён в git).
+- `sketch.ino` - главный файл, `setup()` и `loop()`.
+- `temperature_monitor.hpp` - константы, структура `SensorReading`, прототипы функций.
+- `temperature_monitor.cpp` - реализация: чтение датчиков, LittleFS, Wi-Fi, HTTP, Serial-команды.
+- `sketch/credential.hpp` - учетные данные Wi-Fi и URL сервера (не включён в git).
 
 ### Конфигурация
 
 Все параметры в `temperature_monitor.hpp`:
 
 #### Аппаратные выводы
-- `TEMP_SENSOR_PIN` — пин OneWire (по умолчанию 4).
-- `STATUS_LED` — пин светодиода (по умолчанию 2).
+- `TEMP_SENSOR_PIN` - пин OneWire (по умолчанию 4).
+- `STATUS_LED` - пин светодиода (по умолчанию 2).
 
 #### Хранилище
-- `CSV_PATH` — путь к файлу журнала (по умолчанию `/temper.csv`).
-- `SAVE_INTERVAL_MS` — интервал записи в мс (по умолчанию 10 сек).
+- `CSV_PATH` - путь к файлу журнала (по умолчанию `/temper.csv`).
+- `SAVE_INTERVAL_MS` - интервал записи в мс (по умолчанию 10 сек).
 
 #### HTTP
-- `HTTP_TIMEOUT_MS` — таймаут HTTP-запроса (по умолчанию 5000 мс).
-- `HTTP_RETRY_DELAY_MS` — задержка перед повторной попыткой (по умолчанию 1000 мс).
+- `HTTP_TIMEOUT_MS` - таймаут HTTP-запроса (по умолчанию 5000 мс).
+- `HTTP_RETRY_DELAY_MS` - задержка перед повторной попыткой (по умолчанию 1000 мс).
 
 #### Wi-Fi
-- `WIFI_CONNECT_ATTEMPTS` — максимум попыток подключения (по умолчанию 20).
-- `WIFI_RETRY_DELAY_MS` — задержка между попытками (по умолчанию 500 мс).
+- `WIFI_CONNECT_ATTEMPTS` - максимум попыток подключения (по умолчанию 20).
+- `WIFI_RETRY_DELAY_MS` - задержка между попытками (по умолчанию 500 мс).
 
 #### NTP
-- `NTP_SERVER` — адрес NTP сервера (по умолчанию `pool.ntp.org`).
-- `GMT_OFFSET_SEC` — смещение часового пояса (по умолчанию 7*3600 для UTC+7).
-- `DAYLIGHT_OFFSET_SEC` — смещение летнего времени (по умолчанию 0).
+- `NTP_SERVER` - адрес NTP сервера (по умолчанию `pool.ntp.org`).
+- `GMT_OFFSET_SEC` - смещение часового пояса (по умолчанию 7*3600 для UTC+7).
+- `DAYLIGHT_OFFSET_SEC` - смещение летнего времени (по умолчанию 0).
 
 #### Датчики
-- `MIN_SENSORS_REQUIRED` — минимум датчиков (по умолчанию 2).
-- `DEVICE_ADDR_SIZE` — размер адреса OneWire (по умолчанию 8 байт).
+- `MIN_SENSORS_REQUIRED` - минимум датчиков (по умолчанию 2).
+- `DEVICE_ADDR_SIZE` - размер адреса OneWire (по умолчанию 8 байт).
 
 #### Учетные данные (из `credential.hpp`)
-- `WIFI_SSID` — имя Wi-Fi сети.
-- `WIFI_PASS` — пароль Wi-Fi.
-- `SERVER_URL` — адрес HTTP-сервера для POST.
+- `WIFI_SSID` - имя Wi-Fi сети.
+- `WIFI_PASS` - пароль Wi-Fi.
+- `SERVER_URL` - адрес HTTP-сервера для POST.
 
 ## Использование
 
@@ -121,7 +121,7 @@ reltime,temp0,temp1
 1735123516,36.65,37.15
 ```
 
-- `unixtime` — Unix timestamp от RTC (абсолютное время).
+- `unixtime` - Unix timestamp от RTC (абсолютное время).
 - При отсутствии RTC используется `millis() / 1000` (относительное время).
 
 ## Серверная часть (ПК)
@@ -132,7 +132,7 @@ reltime,temp0,temp1
 pip install flask pyserial
 ```
 
-### server.py — приём данных по Wi-Fi
+### server.py - приём данных по Wi-Fi
 
 Flask-сервер принимает POST-запросы с ESP32 и сохраняет данные в `sensor_data.db`.
 
@@ -140,14 +140,14 @@ Flask-сервер принимает POST-запросы с ESP32 и сохра
 python server/server.py
 ```
 
-- `POST /api/data` — принимает JSON `{"temp0": float, "temp1": float, "timestamp": int}`.
-- `GET /dashboard` — веб-дашборд с графиком и заметками.
-- `GET /api/chart-data` — JSON-данные для графика.
-- `POST /api/notes` — добавление заметки.
+- `POST /api/data` - принимает JSON `{"temp0": float, "temp1": float, "timestamp": int}`.
+- `GET /dashboard` - веб-дашборд с графиком и заметками.
+- `GET /api/chart-data` - JSON-данные для графика.
+- `POST /api/notes` - добавление заметки.
 
 Адрес сервера укажите в `sketch/credential.hpp` в поле `SERVER_URL`.
 
-### logger.py — загрузка CSV через Serial
+### logger.py - загрузка CSV через Serial
 
 Если Wi-Fi недоступен, данные можно выгрузить напрямую с ESP32 через USB.
 
@@ -167,7 +167,7 @@ python server/logger.py
 python server/logger.py --monitor
 ```
 
-Отслеживает вывод Serial в реальном времени и автоматически сохраняет данные в БД при обнаружении строки `Logged: ...`. Остановка — Ctrl+C.
+Отслеживает вывод Serial в реальном времени и автоматически сохраняет данные в БД при обнаружении строки `Logged: ...`. Остановка - Ctrl+C.
 
 **Очистка CSV на ESP32:**
 ```bash
@@ -182,7 +182,7 @@ python server/logger.py --clear
 | `BAUD_RATE`   | Скорость (по умолчанию 115200)    |
 | `DATABASE`    | Путь к SQLite-файлу               |
 
-### config_tool.py — управление конфигурацией ESP32
+### config_tool.py - управление конфигурацией ESP32
 
 Утилита читает и записывает параметры NVS-хранилища устройства через Serial.
 
@@ -212,7 +212,7 @@ python server/config_tool.py --reset
 python server/config_tool.py --interactive
 ```
 
-#### config.json — файл конфигурации
+#### config.json - файл конфигурации
 
 Файл `server/config.json` содержит параметры, которые будут загружены на устройство командой `--upload`. Поддерживаемые ключи:
 
@@ -246,7 +246,7 @@ python server/config_tool.py --interactive
 |---------------|---------|---------------------------|
 | `id`          | INTEGER | Первичный ключ            |
 | `timestamp`   | TEXT    | Дата и время записи       |
-| `sensor_id`   | INTEGER | 0 — первый датчик, 1 — второй |
+| `sensor_id`   | INTEGER | 0 - первый датчик, 1 - второй |
 | `temperature` | REAL    | Температура в °C          |
 
 ### Валидация данных
@@ -258,20 +258,37 @@ python server/config_tool.py --interactive
 ## Сборка и развёртывание бинарей
 
 > **Важно:** PyInstaller не поддерживает кросс-компиляцию. Бинарь для Windows нужно
-> собирать на Windows, для Linux — на Linux.
+> собирать на Windows, для Linux - на Linux.
 
 ### Состав поставки
 
-После сборки в `dist/` окажутся:
+После сборки в `dist/` окажутся три standalone-бинаря:
 
-| Файл            | Назначение                                      |
-|-----------------|-------------------------------------------------|
-| `server(.exe)`  | HTTP-сервер                                     |
-| `tool(.exe)`    | CLI-утилита: `config` + `log`                   |
-| `config.json`   | Файл конфигурации — отредактируйте перед использованием |
+| Файл / папка       | Назначение                                               |
+|--------------------|----------------------------------------------------------|
+| `server(.exe)`     | HTTP-сервер (REST API + веб-дашборд + веб-конфиг)       |
+| `tool(.exe)`       | CLI-утилита: `config` + `log`                            |
+| `gui(.exe)`        | Десктоп-GUI на PySide6 (сервер + конфиг + логгер)       |
+| `config.json`      | Файл конфигурации - отредактируйте перед первым запуском |
 
-`sensor_data.db` создаётся автоматически в той же папке, что и запущенный бинарь.
-Оба бинаря при запуске из одной директории используют **одну и ту же** БД.
+Файлы, создаваемые автоматически рядом с бинарём при первом запуске:
+
+| Файл                 | Создаётся                  | Назначение                            |
+|----------------------|----------------------------|---------------------------------------|
+| `sensor_data.db`     | `server` / `gui`           | SQLite-база данных с показаниями      |
+| `device_config.json` | `server` / `gui`           | Желаемый конфиг устройства (веб-канал)|
+
+Все три бинаря живут в одной папке `dist/` и при запуске оттуда используют
+**одну и ту же** `sensor_data.db` и `device_config.json`.
+
+### Зависимости
+
+`requirements.txt` содержит runtime-зависимости: `flask`, `pyserial`, `PySide6`.
+`requirements-build.txt` содержит `pyinstaller`.
+
+> **Примечание:** `PySide6` - тяжёлая зависимость (~100 MB). Если GUI не нужен,
+> удалите строку `PySide6` из `requirements.txt` перед установкой - это ускорит
+> сборку `server` и `tool` и уменьшит размер venv.
 
 ### Сборка на Windows
 
@@ -286,33 +303,51 @@ bash build.sh
 ```
 
 Скрипты создают venv, устанавливают зависимости из `requirements.txt` и
-`requirements-build.txt` (включая `pyinstaller`), затем запускают оба spec-файла.
+`requirements-build.txt`, затем запускают все три spec-файла.
 
 ### Запуск бинарей
 
+**Windows:**
 ```
-dist\server.exe                        # запуск HTTP-сервера (Windows)
+dist\server.exe                        # HTTP-сервер
 dist\tool.exe config --show            # показать конфигурацию ESP32
 dist\tool.exe config --upload          # загрузить config.json на устройство
 dist\tool.exe log                      # выгрузить CSV-журнал в БД
 dist\tool.exe log --monitor            # мониторинг Serial в реальном времени
+dist\gui.exe                           # десктоп-GUI
 ```
 
+**Linux:**
 ```bash
-dist/server                            # запуск HTTP-сервера (Linux)
+dist/server
 dist/tool config --show
 dist/tool log --monitor
+dist/gui
 ```
 
-Прямые запуски Python-скриптов по-прежнему работают:
+### Онлайн-запуск (без сборки)
+
+Прямые запуски Python-скриптов по-прежнему работают без сборки:
 
 ```bash
 python server/server.py
-python server/config_tool.py --show
-python server/logger.py --monitor
+python server/gui.py
 python server/tool.py config --show
-python server/tool.py log
+python server/tool.py log --monitor
 ```
+
+### Замечания по gui (PySide6)
+
+- **Крупный бинарь:** `gui(.exe)` весит значительно больше `server` и `tool`, потому что
+  содержит Qt-рантайм и все необходимые плагины.
+- **Медленный старт onefile:** при каждом запуске Qt-библиотеки распаковываются во временную
+  папку. Если это критично, замените `--onefile` на `--onedir` в `gui.spec`:
+  ```
+  # в gui.spec уберите a.binaries, a.datas из EXE и добавьте COLLECT(...)
+  pyinstaller gui.spec --onedir --noconfirm
+  ```
+- **Qt-плагины:** если `gui` падает с ошибкой _"no Qt platform plugin could be initialized"_,
+  раскомментируйте строку `collect_all('PySide6')` в `gui.spec` и пересоберите.
 
 ---
 

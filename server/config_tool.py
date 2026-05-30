@@ -1,5 +1,5 @@
 """
-config_tool.py — Управление конфигурацией ESP32 через Serial.
+config_tool.py - Управление конфигурацией ESP32 через Serial.
 
 ESP32 хранит конфигурацию в NVS (Preferences). Утилита предоставляет
 CLI-интерфейс для чтения и записи параметров через Serial-команды.
@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import time
+from typing import Callable
 
 from app_paths import external_path
 from serial_device import BAUD_RATE, SERIAL_PORT, SerialDevice
@@ -42,8 +43,9 @@ CONFIG_KEYS = [
 class ConfigClient:
     """CLI-клиент для управления конфигурацией ESP32 через Serial."""
 
-    def __init__(self, device: SerialDevice) -> None:
+    def __init__(self, device: SerialDevice, log: Callable[[str], None] = print) -> None:
         self._dev = device
+        self._log = log
 
     # ------------------------------------------------------------------ утилиты
 
@@ -86,9 +88,9 @@ class ConfigClient:
         try:
             block = self._dev.wait_for_block("--- CONFIG ---", "--- END CONFIG ---")
         except TimeoutError as e:
-            print(f"Error reading config: {e}")
+            self._log(f"Error reading config: {e}")
             return {}
-        print(block)
+        self._log(block)
         return self.parse_config(block)
 
     def set(self, key: str, value: str, timeout: float = 15.0, retries: int = 2) -> bool:
@@ -100,8 +102,8 @@ class ConfigClient:
         Возвращает True, если устройство подтвердило изменение.
         """
         if key not in CONFIG_KEYS:
-            print(f"Unknown key: {key}")
-            print(f"Valid keys: {', '.join(CONFIG_KEYS)}")
+            self._log(f"Unknown key: {key}")
+            self._log(f"Valid keys: {', '.join(CONFIG_KEYS)}")
             return False
 
         ack_prefix = f"Set: {key}="
@@ -111,18 +113,18 @@ class ConfigClient:
             self._dev.send(f"config set {key}={value}")
             line = self._dev.wait_for_line((ack_prefix, unknown_msg), timeout)
             if line is not None:
-                print(line)
+                self._log(line)
                 return line.startswith(ack_prefix)
             if attempt < retries:
-                print(f"  [retry {attempt}/{retries}] no ACK for '{key}', resending...")
-        print(f"  [fail] device did not acknowledge '{key}'")
+                self._log(f"  [retry {attempt}/{retries}] no ACK for '{key}', resending...")
+        self._log(f"  [fail] device did not acknowledge '{key}'")
         return False
 
     def reset(self) -> None:
         """Сбрасывает конфигурацию к значениям по умолчанию."""
         self._dev.send("config reset")
         time.sleep(1)
-        print(self._dev.read_available().strip())
+        self._log(self._dev.read_available().strip())
 
     def upload(self, config: dict) -> None:
         """Загружает конфигурацию из словаря на устройство через Serial."""
@@ -134,15 +136,15 @@ class ConfigClient:
         total = 0
         for key, value in config.items():
             if key not in CONFIG_KEYS:
-                print(f"  [skip] Unknown key: {key}")
+                self._log(f"  [skip] Unknown key: {key}")
                 continue
             total += 1
             display_value = "***" if key == "wifi_pass" else str(value)
-            print(f"  Setting {key} = {display_value}")
+            self._log(f"  Setting {key} = {display_value}")
             if self.set(key, str(value)):
                 ok += 1
 
-        print(f"\nUpload complete ({ok}/{total} keys acknowledged). Current device config:")
+        self._log(f"\nUpload complete ({ok}/{total} keys acknowledged). Current device config:")
         self.show()
 
     def interactive(self) -> None:

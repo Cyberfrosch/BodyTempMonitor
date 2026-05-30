@@ -1,0 +1,5 @@
+flask
+pyserial
+# PySide6 is required only for the desktop GUI (server/gui.py).
+# It is a heavyweight dependency (~100 MB); omit if you only need the CLI tools.
+PySide6

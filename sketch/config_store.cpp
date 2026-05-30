@@ -68,3 +68,19 @@ void ResetConfig()
      p.end();
      config = Config{};
 }
+
+bool ApplyConfigKey( const String& key, const String& val )
+{
+     if     ( key == "wifi_ssid" )     strncpy( config.wifi_ssid,  val.c_str(), sizeof( config.wifi_ssid  ) - 1 );
+     else if( key == "wifi_pass" )     strncpy( config.wifi_pass,  val.c_str(), sizeof( config.wifi_pass  ) - 1 );
+     else if( key == "server_url" )    strncpy( config.server_url, val.c_str(), sizeof( config.server_url ) - 1 );
+     else if( key == "ntp_server" )    strncpy( config.ntp_server, val.c_str(), sizeof( config.ntp_server ) - 1 );
+     else if( key == "gmt_offset" )    config.gmt_offset_sec        = val.toInt();
+     else if( key == "daylight" )      config.daylight_offset_sec   = val.toInt();
+     else if( key == "save_interval" ) config.save_interval_ms      = (unsigned long)val.toInt();
+     else if( key == "http_timeout" )  config.http_timeout_ms       = (unsigned long)val.toInt();
+     else if( key == "http_delay" )    config.http_retry_delay_ms   = (unsigned long)val.toInt();
+     else if( key == "wifi_attempts" ) config.wifi_connect_attempts = val.toInt();
+     else return false;
+     return true;
+}
