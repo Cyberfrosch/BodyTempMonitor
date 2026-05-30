@@ -103,38 +103,62 @@ class SerialMonitor:
         self._dev = device
         self._db  = db
 
+    def _handle_logged_line(self, line: str) -> None:
+        """Разбирает строку «Logged: …» и сохраняет показания датчиков в БД.
+
+        Сама строка уже выведена потоковой печатью; здесь только запись в БД
+        и вывод подтверждения/предупреждения.
+        """
+        if not line.startswith("Logged: "):
+            return
+        try:
+            # Парсим "Logged: 1735123456, 36.50, 37.20"
+            parts = line.replace("Logged: ", "").split(", ")
+            if len(parts) == 3:
+                unix_ts   = int(parts[0])
+                temp0     = float(parts[1])
+                temp1     = float(parts[2])
+                timestamp = Database.unix_to_str(unix_ts)
+
+                inserted0 = self._db.insert_temperature(timestamp, 0, temp0)
+                inserted1 = self._db.insert_temperature(timestamp, 1, temp1)
+
+                if inserted0 and inserted1:
+                    print(f"  → Saved to DB: [{timestamp}] temp0={temp0}°C, temp1={temp1}°C")
+                elif not inserted0 and not inserted1:
+                    print(f"  → Skipped (duplicate or invalid)")
+        except (ValueError, IndexError):
+            pass
+
     def run(self) -> None:
-        """Запускает бесконечный цикл мониторинга. Остановка — Ctrl+C."""
+        """Запускает потоковый мониторинг Serial. Остановка — Ctrl+C.
+
+        Байты печатаются сразу по мере поступления, не дожидаясь символа \\n,
+        поэтому частичные строки (прогресс-точки Wi-Fi) видны в реальном времени.
+        Параллельно завершённые строки «Logged: …» сохраняются в БД.
+        """
         print(f"Monitoring Serial port {self._dev.port} at {self._dev.baud} baud...")
         print("Press Ctrl+C to stop.\n")
 
+        buf = ""
         try:
             while True:
-                if not self._dev.in_waiting:
+                chunk = self._dev.read_available()
+                if not chunk:
+                    time.sleep(0.02)  # уступаем CPU при отсутствии данных
                     continue
-                line = self._dev.readline()
-                print(line)
 
-                # Проверяем, является ли строка записью "Logged: timestamp, temp0, temp1"
-                if line.startswith("Logged: "):
-                    try:
-                        # Парсим "Logged: 1735123456, 36.50, 37.20"
-                        parts = line.replace("Logged: ", "").split(", ")
-                        if len(parts) == 3:
-                            unix_ts   = int(parts[0])
-                            temp0     = float(parts[1])
-                            temp1     = float(parts[2])
-                            timestamp = Database.unix_to_str(unix_ts)
+                # Печатаем немедленно: \r отбрасываем, чтобы \r\n не ломал вывод
+                print(chunk.replace("\r", ""), end="", flush=True)
 
-                            inserted0 = self._db.insert_temperature(timestamp, 0, temp0)
-                            inserted1 = self._db.insert_temperature(timestamp, 1, temp1)
+                # Накапливаем в буфере для построчного разбора
+                buf += chunk
 
-                            if inserted0 and inserted1:
-                                print(f"  → Saved to DB: [{timestamp}] temp0={temp0}°C, temp1={temp1}°C")
-                            elif not inserted0 and not inserted1:
-                                print(f"  → Skipped (duplicate or invalid)")
-                    except (ValueError, IndexError):
-                        pass
+                # Извлекаем завершённые строки (по \n) и обрабатываем каждую
+                while "\n" in buf:
+                    line, buf = buf.split("\n", 1)
+                    self._handle_logged_line(line.strip())
+
         except KeyboardInterrupt:
             print("\n\nMonitoring stopped.")
 
