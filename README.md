@@ -151,6 +151,7 @@ python server/server.py
 
 Если Wi-Fi недоступен, данные можно выгрузить напрямую с ESP32 через USB.
 
+**Режим загрузки CSV:**
 ```bash
 python server/logger.py
 ```
@@ -161,6 +162,18 @@ python server/logger.py
 4. Пропускает дубликаты, уже записанные сервером.
 5. Сохраняет результат в `sensor_data.db`.
 
+**Режим мониторинга в реальном времени:**
+```bash
+python server/logger.py --monitor
+```
+
+Отслеживает вывод Serial в реальном времени и автоматически сохраняет данные в БД при обнаружении строки `Logged: ...`. Остановка — Ctrl+C.
+
+**Очистка CSV на ESP32:**
+```bash
+python server/logger.py --clear
+```
+
 Настройки в начале файла:
 
 | Параметр      | Описание                          |
@@ -168,6 +181,62 @@ python server/logger.py
 | `SERIAL_PORT` | COM-порт ESP32 (например, `COM5`) |
 | `BAUD_RATE`   | Скорость (по умолчанию 115200)    |
 | `DATABASE`    | Путь к SQLite-файлу               |
+
+### config_tool.py — управление конфигурацией ESP32
+
+Утилита читает и записывает параметры NVS-хранилища устройства через Serial.
+
+**Показать текущую конфигурацию:**
+```bash
+python server/config_tool.py --show
+```
+
+**Установить один параметр:**
+```bash
+python server/config_tool.py --set wifi_ssid=MyNetwork
+```
+
+**Загрузить конфигурацию из `server/config.json` или по явномму пути:**
+```bash
+python server/config_tool.py --upload
+python server/config_tool.py --upload --file /path/to/config
+```
+
+**Сброс к значениям по умолчанию:**
+```bash
+python server/config_tool.py --reset
+```
+
+**Интерактивный режим:**
+```bash
+python server/config_tool.py --interactive
+```
+
+#### config.json — файл конфигурации
+
+Файл `server/config.json` содержит параметры, которые будут загружены на устройство командой `--upload`. Поддерживаемые ключи:
+
+| Ключ            | Описание                                          |
+|-----------------|---------------------------------------------------|
+| `wifi_ssid`     | Имя Wi-Fi сети                                    |
+| `wifi_pass`     | Пароль Wi-Fi (при выводе маскируется как `***`)   |
+| `server_url`    | URL HTTP-сервера для POST-запросов                |
+| `ntp_server`    | Адрес NTP-сервера (например, `pool.ntp.org`)      |
+| `gmt_offset`    | Смещение часового пояса в секундах (UTC+7 = 25200)|
+| `daylight`      | Смещение летнего времени в секундах               |
+| `save_interval` | Интервал записи в CSV, мс                         |
+| `http_timeout`  | Таймаут HTTP-запроса, мс                          |
+| `http_delay`    | Задержка перед повторной HTTP-попыткой, мс        |
+| `wifi_attempts` | Максимум попыток подключения к Wi-Fi              |
+
+Ключи, отсутствующие в файле, пропускаются. Неизвестные ключи вызывают предупреждение и также пропускаются.
+
+Настройки в начале файла:
+
+| Параметр      | Описание                          |
+|---------------|-----------------------------------|
+| `SERIAL_PORT` | COM-порт ESP32 (например, `COM5`) |
+| `BAUD_RATE`   | Скорость (по умолчанию 115200)    |
 
 ### Структура БД
 
@@ -185,6 +254,65 @@ python server/logger.py
 - Значения `-127` (ошибка датчика DS18B20) игнорируются.
 - Температуры вне диапазона -50°C..+100°C игнорируются.
 - Дубликаты (одинаковые timestamp + sensor_id) не вставляются.
+
+## Сборка и развёртывание бинарей
+
+> **Важно:** PyInstaller не поддерживает кросс-компиляцию. Бинарь для Windows нужно
+> собирать на Windows, для Linux — на Linux.
+
+### Состав поставки
+
+После сборки в `dist/` окажутся:
+
+| Файл            | Назначение                                      |
+|-----------------|-------------------------------------------------|
+| `server(.exe)`  | HTTP-сервер                                     |
+| `tool(.exe)`    | CLI-утилита: `config` + `log`                   |
+| `config.json`   | Файл конфигурации — отредактируйте перед использованием |
+
+`sensor_data.db` создаётся автоматически в той же папке, что и запущенный бинарь.
+Оба бинаря при запуске из одной директории используют **одну и ту же** БД.
+
+### Сборка на Windows
+
+```powershell
+.\build.ps1
+```
+
+### Сборка на Linux
+
+```bash
+bash build.sh
+```
+
+Скрипты создают venv, устанавливают зависимости из `requirements.txt` и
+`requirements-build.txt` (включая `pyinstaller`), затем запускают оба spec-файла.
+
+### Запуск бинарей
+
+```
+dist\server.exe                        # запуск HTTP-сервера (Windows)
+dist\tool.exe config --show            # показать конфигурацию ESP32
+dist\tool.exe config --upload          # загрузить config.json на устройство
+dist\tool.exe log                      # выгрузить CSV-журнал в БД
+dist\tool.exe log --monitor            # мониторинг Serial в реальном времени
+```
+
+```bash
+dist/server                            # запуск HTTP-сервера (Linux)
+dist/tool config --show
+dist/tool log --monitor
+```
+
+Прямые запуски Python-скриптов по-прежнему работают:
+
+```bash
+python server/server.py
+python server/config_tool.py --show
+python server/logger.py --monitor
+python server/tool.py config --show
+python server/tool.py log
+```
 
 ---
 

@@ -2,23 +2,36 @@
  * @file      sketch.ino
  * @brief     Мониторинг температуры тела с двумя датчиками DS18B20.
  * @details   Периодическая запись в CSV (LittleFS), отправка на HTTP-сервер,
- *            Serial-команды "download" и "clear".
- *            Заглушка RTC DS3231 — раскомментировать при наличии модуля.
+ *            обработка Serial-команд.
  */
 
-#include "temperature_monitor.hpp"
+#include "system.hpp"
+#include "config_store.hpp"
+#include "temp_sensors.hpp"
+#include "clock_rtc.hpp"
+#include "storage.hpp"
+#include "network.hpp"
+#include "serial_commands.hpp"
+
+static void CheckDevices()
+{
+     if( !AreSensorsConnected() ) FaultReboot( "Sensors DS18B20 not connected" );
+     if( !IsRTCconnected() )      FaultReboot( "RTC DS3231 not connected" );
+}
 
 void setup()
 {
-     Serial.begin( 115200 );
+     Serial.setRxBufferSize( SERIAL_RX_BUF_SIZE );
+     Serial.begin( SERIAL_BAUD_RATE );
      pinMode( STATUS_LED, OUTPUT );
      digitalWrite( STATUS_LED, LOW );
 
-     sensors.begin();
+     LoadConfig();
 
-     InitRTC();
-     InitSensorBinding();
-     InitStorage();
+     if( !InitRTC() )      FaultReboot( "RTC DS3231 init failed" );
+     if( !InitSensors() )  FaultReboot( "Sensors DS18B20 init failed" );
+     if( !InitStorage() )  FaultReboot( "LittleFS init failed" );
+
      InitWiFi();
 }
 
@@ -28,9 +41,11 @@ void loop()
 
      HandleSerialCommands();
 
-     if( millis() - lastSave >= SAVE_INTERVAL_MS )
+     if( millis() - lastSave >= config.save_interval_ms )
      {
           lastSave = millis();
+
+          CheckDevices();
 
           SensorReading reading = ReadSensors();
           LogReading( reading );
