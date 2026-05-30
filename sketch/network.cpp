@@ -88,8 +88,8 @@ void SendToServer( const SensorReading& reading )
      }
      else if( httpCode > 0 )
      {
-          digitalWrite( STATUS_LED, !digitalRead( STATUS_LED ) );
           Serial.printf( "Server HTTP error: %d\n", httpCode );
+          IndicateServerError();
      }
      else
      {
@@ -103,8 +103,8 @@ void SendToServer( const SensorReading& reading )
           }
           else
           {
-               digitalWrite( STATUS_LED, LOW );
                Serial.printf( "Retry failed: %d\n", httpCode );
+               IndicateServerError();
           }
      }
      http.end();

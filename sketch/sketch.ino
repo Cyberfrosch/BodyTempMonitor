@@ -15,8 +15,8 @@
 
 static void CheckDevices()
 {
-     if( !AreSensorsConnected() ) HaltWithError( "Sensors DS18B20 not connected" );
-     if( !IsRTCconnected() )      HaltWithError( "RTC DS3231 not connected" );
+     if( !AreSensorsConnected() ) FaultReboot( "Sensors DS18B20 not connected" );
+     if( !IsRTCconnected() )      FaultReboot( "RTC DS3231 not connected" );
 }
 
 void setup()
@@ -28,9 +28,9 @@ void setup()
 
      LoadConfig();
 
-     if( !InitRTC() )      HaltWithError( "RTC DS3231 init failed" );
-     if( !InitSensors() )  HaltWithError( "Sensors DS18B20 init failed" );
-     if( !InitStorage() )  HaltWithError( "LittleFS init failed" );
+     if( !InitRTC() )      FaultReboot( "RTC DS3231 init failed" );
+     if( !InitSensors() )  FaultReboot( "Sensors DS18B20 init failed" );
+     if( !InitStorage() )  FaultReboot( "LittleFS init failed" );
 
      InitWiFi();
 }
