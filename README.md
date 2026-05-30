@@ -264,19 +264,19 @@ python server/config_tool.py --interactive
 
 После сборки в `dist/` окажутся три standalone-бинаря:
 
-| Файл / папка       | Назначение                                               |
-|--------------------|----------------------------------------------------------|
-| `server(.exe)`     | HTTP-сервер (REST API + веб-дашборд + веб-конфиг)       |
-| `tool(.exe)`       | CLI-утилита: `config` + `log`                            |
-| `gui(.exe)`        | Десктоп-GUI на PySide6 (сервер + конфиг + логгер)       |
-| `config.json`      | Файл конфигурации - отредактируйте перед первым запуском |
+| Файл / папка                    | Назначение                                               |
+|---------------------------------|----------------------------------------------------------|
+| `BodyTempMonitor-server(.exe)`  | HTTP-сервер (REST API + веб-дашборд + веб-конфиг)       |
+| `BodyTempMonitor-cli(.exe)`     | CLI-утилита: `config` + `log`                            |
+| `BodyTempMonitor-gui(.exe)`     | Десктоп-GUI на PySide6 (сервер + конфиг + логгер)       |
+| `config.json`                   | Файл конфигурации - отредактируйте перед первым запуском |
 
 Файлы, создаваемые автоматически рядом с бинарём при первом запуске:
 
-| Файл                 | Создаётся                  | Назначение                            |
-|----------------------|----------------------------|---------------------------------------|
-| `sensor_data.db`     | `server` / `gui`           | SQLite-база данных с показаниями      |
-| `device_config.json` | `server` / `gui`           | Желаемый конфиг устройства (веб-канал)|
+| Файл                 | Создаётся                           | Назначение                            |
+|----------------------|-------------------------------------|---------------------------------------|
+| `sensor_data.db`     | `BodyTempMonitor-server` / `-gui`   | SQLite-база данных с показаниями      |
+| `device_config.json` | `BodyTempMonitor-server` / `-gui`   | Желаемый конфиг устройства (веб-канал)|
 
 Все три бинаря живут в одной папке `dist/` и при запуске оттуда используют
 **одну и ту же** `sensor_data.db` и `device_config.json`.
@@ -288,7 +288,7 @@ python server/config_tool.py --interactive
 
 > **Примечание:** `PySide6` - тяжёлая зависимость (~100 MB). Если GUI не нужен,
 > удалите строку `PySide6` из `requirements.txt` перед установкой - это ускорит
-> сборку `server` и `tool` и уменьшит размер venv.
+> сборку `BodyTempMonitor-server` и `BodyTempMonitor-cli` и уменьшит размер venv.
 
 ### Сборка на Windows
 
@@ -309,20 +309,20 @@ bash build.sh
 
 **Windows:**
 ```
-dist\server.exe                        # HTTP-сервер
-dist\tool.exe config --show            # показать конфигурацию ESP32
-dist\tool.exe config --upload          # загрузить config.json на устройство
-dist\tool.exe log                      # выгрузить CSV-журнал в БД
-dist\tool.exe log --monitor            # мониторинг Serial в реальном времени
-dist\gui.exe                           # десктоп-GUI
+dist\BodyTempMonitor-server.exe
+dist\BodyTempMonitor-cli.exe config --show      # показать конфигурацию ESP32
+dist\BodyTempMonitor-cli.exe config --upload    # загрузить config.json на устройство
+dist\BodyTempMonitor-cli.exe log                # выгрузить CSV-журнал в БД
+dist\BodyTempMonitor-cli.exe log --monitor      # мониторинг Serial в реальном времени
+dist\BodyTempMonitor-gui.exe
 ```
 
 **Linux:**
 ```bash
-dist/server
-dist/tool config --show
-dist/tool log --monitor
-dist/gui
+dist/BodyTempMonitor-server
+dist/BodyTempMonitor-cli config --show
+dist/BodyTempMonitor-cli log --monitor
+dist/BodyTempMonitor-gui
 ```
 
 ### Онлайн-запуск (без сборки)
@@ -336,18 +336,19 @@ python server/tool.py config --show
 python server/tool.py log --monitor
 ```
 
-### Замечания по gui (PySide6)
+### Замечания по BodyTempMonitor-gui (PySide6)
 
-- **Крупный бинарь:** `gui(.exe)` весит значительно больше `server` и `tool`, потому что
-  содержит Qt-рантайм и все необходимые плагины.
+- **Крупный бинарь:** `BodyTempMonitor-gui(.exe)` весит значительно больше остальных, потому
+  что содержит Qt-рантайм и все необходимые плагины.
 - **Медленный старт onefile:** при каждом запуске Qt-библиотеки распаковываются во временную
   папку. Если это критично, замените `--onefile` на `--onedir` в `gui.spec`:
   ```
   # в gui.spec уберите a.binaries, a.datas из EXE и добавьте COLLECT(...)
   pyinstaller gui.spec --onedir --noconfirm
   ```
-- **Qt-плагины:** если `gui` падает с ошибкой _"no Qt platform plugin could be initialized"_,
-  раскомментируйте строку `collect_all('PySide6')` в `gui.spec` и пересоберите.
+- **Qt-плагины:** если `BodyTempMonitor-gui` падает с ошибкой _"no Qt platform plugin could
+  be initialized"_, раскомментируйте строку `collect_all('PySide6')` в `gui.spec` и
+  пересоберите.
 
 ---
 

@@ -40,7 +40,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='gui',
+    name='BodyTempMonitor-gui',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

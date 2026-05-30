@@ -58,3 +58,5 @@ device_config.json
 
 # Hidden directories
 .*/
+# ...but keep GitHub Actions workflows
+!.github/

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh - Build server, tool and gui on Linux.
+# build.sh - Build BodyTempMonitor-server, BodyTempMonitor-cli and BodyTempMonitor-gui on Linux.
 # Run from the repository root: bash build.sh
 # PyInstaller does not cross-compile:
 # Windows binaries must be built on Windows (build.ps1).
@@ -20,13 +20,13 @@ echo "Installing dependencies..."
 pip install -r requirements.txt -r requirements-build.txt --quiet
 
 # -- 3. Build -----------------------------------------------------------------
-echo "Building server..."
+echo "Building BodyTempMonitor-server..."
 pyinstaller server.spec --noconfirm
 
-echo "Building tool..."
+echo "Building BodyTempMonitor-cli..."
 pyinstaller tool.spec --noconfirm
 
-echo "Building gui  (PySide6 - may take a while)..."
+echo "Building BodyTempMonitor-gui  (PySide6 - may take a while)..."
 pyinstaller gui.spec --noconfirm
 
 # -- 4. config.json next to binaries ------------------------------------------
@@ -43,22 +43,22 @@ fi
 # -- 5. Summary ---------------------------------------------------------------
 echo ""
 echo "=== Build complete ==="
-echo "  dist/server          <- HTTP server + web dashboard"
-echo "  dist/tool            <- CLI: config / log"
-echo "  dist/gui             <- Desktop GUI (PySide6; large binary)"
-echo "  dist/config.json     <- Edit before first run"
+echo "  dist/BodyTempMonitor-server   <- HTTP server + web dashboard"
+echo "  dist/BodyTempMonitor-cli      <- CLI: config / log"
+echo "  dist/BodyTempMonitor-gui      <- Desktop GUI (PySide6; large binary)"
+echo "  dist/config.json              <- Edit before first run"
 echo ""
 echo "Files created automatically next to the binary at runtime:"
-echo "  sensor_data.db       <- SQLite database"
-echo "  device_config.json   <- Desired device config (web channel)"
+echo "  sensor_data.db        <- SQLite database"
+echo "  device_config.json    <- Desired device config (web channel)"
 echo ""
 echo "Usage:"
-echo "  dist/server"
-echo "  dist/tool config --show"
-echo "  dist/tool config --upload"
-echo "  dist/tool log"
-echo "  dist/tool log --monitor"
-echo "  dist/gui"
+echo "  dist/BodyTempMonitor-server"
+echo "  dist/BodyTempMonitor-cli config --show"
+echo "  dist/BodyTempMonitor-cli config --upload"
+echo "  dist/BodyTempMonitor-cli log"
+echo "  dist/BodyTempMonitor-cli log --monitor"
+echo "  dist/BodyTempMonitor-gui"
 echo ""
-echo "Note: gui extracts Qt on every launch (onefile)."
+echo "Note: BodyTempMonitor-gui extracts Qt on every launch (onefile)."
 echo "If startup is too slow, rebuild with --onedir (see README)."
