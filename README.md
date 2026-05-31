@@ -51,7 +51,11 @@
    ```
 2. Откройте `sketch.ino` в Arduino IDE.
 3. В `sketch/credential.hpp` укажите свои `WIFI_SSID`, `WIFI_PASS` и `SERVER_URL`.
-4. Выберите плату **ESP32** и порт, нажмите **Загрузить**.
+4. **Схема разделов (обязательно):** выберите
+   **Инструменты → Partition Scheme → Huge APP (3MB No OTA)**
+   (или `Minimal SPIFFS`). Wi-Fi + BLE + LittleFS не влезают в дефолтную схему.
+5. Создайте `sketch/ble_secret.hpp` из примера и задайте свой PIN (см. [Настройка BLE](#настройка-ble)).
+6. Выберите плату **ESP32** и порт, нажмите **Загрузить**.
 
 ### Структура проекта
 
@@ -112,6 +116,51 @@
 | `download` | Вывести содержимое CSV в Serial       |
 | `clear`    | Очистить CSV, пересоздать с заголовком |
 | `rebind`   | Сбросить привязку датчиков (требуется перезагрузка) |
+
+Команды `config show / set / reset` доступны как по Serial, так и по BLE (см. ниже).
+
+### Настройка BLE
+
+Устройство транслирует BLE-рекламу как `BodyTempMonitor` с кастомным GATT-сервисом.
+Чтение и запись характеристик доступны **только после паринга с passkey** (LE Secure
+Connections + MITM + бондинг). Это защищает Wi-Fi пароль и конфигурацию при передаче.
+
+#### Подготовка passkey
+
+```bash
+# Скопировать пример и задать свой 6-значный PIN:
+cp sketch/ble_secret.example.hpp sketch/ble_secret.hpp
+# Открыть sketch/ble_secret.hpp и изменить значение BLE_PASSKEY
+```
+
+`sketch/ble_secret.hpp` добавлен в `.gitignore` и **не попадает в репозиторий**.
+
+#### Паринг через nRF Connect
+
+1. Откройте nRF Connect → Scan → найдите `BodyTempMonitor`, нажмите **Connect**.
+2. Приложение запросит ввод passkey — откройте Serial Monitor и найдите строку:
+   ```
+   BLE: passkey for pairing: 123456
+   ```
+3. Введите этот PIN в nRF Connect и подтвердите. После успешного паринга:
+   ```
+   BLE: authentication OK — bonded
+   ```
+4. **Повторное подключение** — без повторного ввода PIN (бондинг).
+
+#### BLE-команды конфигурации
+
+Найдите сервис `4fa9c0de-…`, характеристику `CMD` (4fa9c0df-…):
+
+| Действие | Команда (Write в CMD) | Ответ (Notify из RSP) |
+|----------|----------------------|-----------------------|
+| Показать конфигурацию | `config show` | Блок `--- CONFIG --- … --- END CONFIG ---` |
+| Задать параметр | `config set wifi_ssid=Home` | `Set: wifi_ssid=Home` |
+| Задать сервер | `config set server_url=192.168.1.100:5000` | `Set: server_url=…` |
+| Сбросить конфиг | `config reset` | `Config reset to defaults` |
+
+> **Примечание:** команды `download` и `clear` выводят данные в Serial Monitor;
+> через BLE приходит только строка статуса (`download: done` / `CSV cleared`).
 
 ### Формат CSV
 
