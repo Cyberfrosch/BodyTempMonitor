@@ -9,8 +9,7 @@ import time
 
 import serial
 
-SERIAL_PORT = "COM5"
-BAUD_RATE   = 115200
+from app_config import BAUD_RATE, SERIAL_PORT  # значения из config.json["host"]
 
 
 class SerialDevice:

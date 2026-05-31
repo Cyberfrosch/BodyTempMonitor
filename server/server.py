@@ -2,39 +2,38 @@
 server.py - Flask HTTP-сервер для приёма данных с ESP32.
 
 Маршруты:
-  POST /api/data       - приём данных с датчиков ESP32
-  GET  /api/data       - (не используется; POST-only)
+  POST /api/data       - приём данных с датчиков ESP32 (ответ: X-Config-ETag)
   GET  /api/chart-data - JSON-данные для графика
   POST /api/notes      - добавление заметки
   GET  /dashboard      - веб-дашборд с графиком и заметками
-  GET  /api/config     - «желаемый» конфиг устройства (key=value, для прошивки)
-  POST /api/config     - обновление желаемого конфига (JSON, из веб-формы)
+  GET  /api/config     - несвязочный конфиг устройства (key=value, для прошивки)
+  POST /api/config     - обновление несвязочного конфига (JSON, из веб-формы)
   GET  /config         - страница редактирования конфига устройства
 """
 
 from flask import Flask, Response, jsonify, make_response, render_template, request
 from flask.views import MethodView
 
+from app_config import cfg
+from config_schema import BINDING_KEYS, CONFIG_LABELS, NON_BINDING_KEYS
 from app_paths import resource_path
-from db_common import DATABASE, Database
-from device_config import DEVICE_CONFIG_FILE, DeviceConfig, WEB_EDITABLE_KEYS
+from db_common import Database
 
-# ---------- Настройки ----------
-HOST = "0.0.0.0"
-PORT = 5000
+# Экспортируем для обратной совместимости (gui.py: from server import HOST, PORT)
+HOST = cfg.server_host
+PORT = cfg.server_port
 
 
 class DataAPI(MethodView):
     """Приём данных с датчиков ESP32 (POST /api/data).
 
-    Ответ содержит заголовок X-Config-Revision с текущей ревизией желаемого
-    конфига.  Прошивка сравнивает его с последней применённой ревизией и,
-    если они отличаются, делает GET /api/config для получения обновлений.
+    Ответ несёт заголовок X-Config-ETag - SHA-256 несвязочного конфига.
+    Прошивка сравнивает его с последним применённым ETag и при расхождении
+    делает GET /api/config (событийный pull без периодического опроса).
     """
 
-    def __init__(self, db: Database, dev_cfg: DeviceConfig) -> None:
-        self.db      = db
-        self.dev_cfg = dev_cfg
+    def __init__(self, db: Database) -> None:
+        self.db = db
 
     def post(self):
         data = request.get_json()
@@ -42,7 +41,6 @@ class DataAPI(MethodView):
             return "bad request: needs temp0, temp1, and timestamp", 400
 
         timestamp = Database.unix_to_str(data["timestamp"])
-
         inserted0 = self.db.insert_temperature(timestamp, 0, data["temp0"])
         inserted1 = self.db.insert_temperature(timestamp, 1, data["temp1"])
 
@@ -54,7 +52,7 @@ class DataAPI(MethodView):
             print(f"[{timestamp}] Partially inserted (one sensor invalid/duplicate)")
 
         resp = make_response("ok", 200)
-        resp.headers["X-Config-Revision"] = str(self.dev_cfg.revision)
+        resp.headers["X-Config-ETag"] = cfg.compute_etag()
         return resp
 
 
@@ -94,89 +92,55 @@ class DashboardView(MethodView):
 
 
 class DeviceConfigAPI(MethodView):
-    """Желаемый конфиг устройства (GET/POST /api/config).
+    """Несвязочный конфиг устройства (GET/POST /api/config).
 
-    GET  → text/plain, строки key=value (прошивка парсит напрямую).
-    POST → JSON-тело {"key": value, ...}; связочные ключи отклоняются.
+    GET  - text/plain, строки key=value + etag= (прошивка парсит напрямую).
+    POST - JSON-тело {key: value}; связочные ключи отклоняются.
     """
 
-    def __init__(self, dev_cfg: DeviceConfig) -> None:
-        self.dev_cfg = dev_cfg
-
     def get(self):
-        return Response(self.dev_cfg.as_text(), mimetype="text/plain")
+        return Response(cfg.as_text(), mimetype="text/plain")
 
     def post(self):
         data = request.get_json(force=True, silent=True) or {}
-        applied, rejected = self.dev_cfg.update(data)
-        result: dict = {
+        applied, rejected = cfg.save_device_updates(data)
+        return jsonify({
             "applied":  applied,
             "rejected": rejected,
-            "revision": self.dev_cfg.revision,
-        }
-        return jsonify(result), (200 if applied else 400)
+            "etag":     cfg.compute_etag(),
+        }), (200 if applied else 400)
 
 
 class DeviceConfigPage(MethodView):
-    """Страница редактирования желаемого конфига устройства (GET /config)."""
-
-    def __init__(self, dev_cfg: DeviceConfig) -> None:
-        self.dev_cfg = dev_cfg
+    """Страница редактирования несвязочного конфига устройства (GET /config)."""
 
     def get(self):
         return render_template(
             "config.html",
-            config=self.dev_cfg.get_all(),
-            editable_keys=WEB_EDITABLE_KEYS,
+            config=cfg.device_config(),
+            editable_keys=sorted(NON_BINDING_KEYS),
+            binding_keys=sorted(BINDING_KEYS),
+            etag=cfg.compute_etag(),
+            labels=CONFIG_LABELS,
         )
 
 
-def create_app(db: Database, dev_cfg: DeviceConfig | None = None) -> Flask:
-    """Создаёт и настраивает Flask-приложение, регистрируя все представления.
-
-    dev_cfg опционален: если не передан, создаётся с путём по умолчанию.
-    Это сохраняет обратную совместимость с вызовами create_app(db).
-    """
-    if dev_cfg is None:
-        dev_cfg = DeviceConfig(DEVICE_CONFIG_FILE)
-
+def create_app(db: Database) -> Flask:
+    """Создаёт и настраивает Flask-приложение, регистрируя все представления."""
     app = Flask(__name__, template_folder=resource_path("templates"))
 
-    app.add_url_rule(
-        "/api/data",
-        view_func=DataAPI.as_view("data_api", db, dev_cfg),
-        methods=["POST"],
-    )
-    app.add_url_rule(
-        "/api/chart-data",
-        view_func=ChartDataAPI.as_view("chart_data", db),
-        methods=["GET"],
-    )
-    app.add_url_rule(
-        "/api/notes",
-        view_func=NotesAPI.as_view("notes_api", db),
-        methods=["POST"],
-    )
-    app.add_url_rule(
-        "/dashboard",
-        view_func=DashboardView.as_view("dashboard", db),
-        methods=["GET"],
-    )
-    app.add_url_rule(
-        "/api/config",
-        view_func=DeviceConfigAPI.as_view("device_config_api", dev_cfg),
-        methods=["GET", "POST"],
-    )
-    app.add_url_rule(
-        "/config",
-        view_func=DeviceConfigPage.as_view("device_config_page", dev_cfg),
-        methods=["GET"],
-    )
+    app.add_url_rule("/api/data",       view_func=DataAPI.as_view("data_api", db),             methods=["POST"])
+    app.add_url_rule("/api/chart-data", view_func=ChartDataAPI.as_view("chart_data", db),      methods=["GET"])
+    app.add_url_rule("/api/notes",      view_func=NotesAPI.as_view("notes_api", db),           methods=["POST"])
+    app.add_url_rule("/dashboard",      view_func=DashboardView.as_view("dashboard", db),      methods=["GET"])
+    app.add_url_rule("/api/config",     view_func=DeviceConfigAPI.as_view("device_config_api"), methods=["GET", "POST"])
+    app.add_url_rule("/config",         view_func=DeviceConfigPage.as_view("device_config_page"), methods=["GET"])
 
     return app
 
 
 if __name__ == "__main__":
+    from db_common import DATABASE
     db = Database(DATABASE)
     db.init_schema()
     print(f"Server running on http://{HOST}:{PORT}")

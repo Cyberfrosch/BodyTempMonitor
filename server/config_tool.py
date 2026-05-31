@@ -22,22 +22,10 @@ import time
 from typing import Callable
 
 from app_paths import external_path
+from config_schema import CONFIG_KEYS, normalize_server_addr
 from serial_device import BAUD_RATE, SERIAL_PORT, SerialDevice
 
 CONFIG_FILE = external_path("config.json")
-
-CONFIG_KEYS = [
-    "wifi_ssid",
-    "wifi_pass",
-    "server_url",
-    "ntp_server",
-    "gmt_offset",
-    "daylight",
-    "save_interval",
-    "http_timeout",
-    "http_delay",
-    "wifi_attempts",
-]
 
 
 class ConfigClient:
@@ -68,13 +56,21 @@ class ConfigClient:
 
     @staticmethod
     def load_file(path: str) -> dict:
-        """Загружает и разбирает JSON-файл конфигурации."""
+        """Загружает и разбирает JSON-файл конфигурации.
+
+        Поддерживает как плоский формат, так и секционированный
+        {"host": {...}, "device": {...}}: в секционированном случае возвращает
+        секцию device (полный device-конфиг, включая связочные ключи).
+        """
         if not os.path.exists(path):
             print(f"Error: config file not found: {path}")
             return {}
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            if isinstance(data, dict) and "device" in data:
+                return data["device"]
+            return data
         except json.JSONDecodeError as e:
             print(f"Error: invalid JSON in {path}: {e}")
             return {}
@@ -99,12 +95,20 @@ class ConfigClient:
         Дожидается подтверждения `Set: <key>=...` от устройства перед возвратом.
         Это синхронизирует отправку со скоростью прошивки и не даёт командам
         накапливаться в RX-буфере МК (иначе длинные строки вроде server_url теряются).
+        Для ``server_url`` автоматически нормализует значение к ``host:port``.
         Возвращает True, если устройство подтвердило изменение.
         """
         if key not in CONFIG_KEYS:
             self._log(f"Unknown key: {key}")
             self._log(f"Valid keys: {', '.join(CONFIG_KEYS)}")
             return False
+
+        if key == "server_url" and value:
+            try:
+                value = normalize_server_addr(value)
+            except ValueError as exc:
+                self._log(f"Invalid server_url: {exc}")
+                return False
 
         ack_prefix = f"Set: {key}="
         unknown_msg = f"Unknown key: {key}"

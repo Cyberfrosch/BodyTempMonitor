@@ -8,9 +8,7 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime
 
-from app_paths import external_path
-
-DATABASE = external_path("sensor_data.db")
+from app_config import DATABASE
 
 _CREATE_TABLE_SQL = """
     CREATE TABLE IF NOT EXISTS temperatures (
