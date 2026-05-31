@@ -1,11 +1,13 @@
 /**
  * @file      config_store.hpp
  * @brief     Конфигурация устройства: структура данных и операции с NVS.
- * @details   Хранит параметры в NVS namespace "config". Ключи NVS фиксированы —
+ * @details   Хранит параметры в NVS namespace "config". Ключи NVS фиксированы -
  *            их изменение ломает совместимость с уже прошитыми устройствами.
  */
 
 #pragma once
+
+#include <Arduino.h>
 
 /**
  * @struct Config
@@ -42,3 +44,13 @@ void SaveConfig();
  * @brief Очищает NVS namespace "config" и сбрасывает конфигурацию к значениям по умолчанию.
  */
 void ResetConfig();
+
+/**
+ * @brief Применяет пару ключ=значение к структуре Config (без сохранения в NVS).
+ * @details Используется как Serial-командой «config set», так и HTTP-каналом веб-конфига.
+ *          Сохранение в NVS - ответственность вызывающего кода (SaveConfig()).
+ * @param key  Имя параметра (совпадает с ключом Serial-протокола).
+ * @param val  Строковое значение для присваивания.
+ * @return true если ключ известен и применён, false если ключ неизвестен.
+ */
+bool ApplyConfigKey( const String& key, const String& val );

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Конфигурация устройства</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        h1 { color: #333; }
+        .container { max-width: 700px; margin: 0 auto; background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        nav { margin-bottom: 20px; }
+        nav a { color: #007bff; text-decoration: none; margin-right: 16px; }
+        nav a:hover { text-decoration: underline; }
+        .form-row { display: flex; align-items: center; margin: 10px 0; gap: 12px; }
+        .form-row label { width: 160px; font-weight: bold; color: #444; flex-shrink: 0; }
+        .form-row input { flex: 1; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        .form-row .hint { font-size: 12px; color: #888; }
+        .binding-note { background: #fff8e1; border-left: 3px solid #ffc107; padding: 10px 14px; margin: 18px 0; font-size: 13px; color: #555; }
+        button { padding: 10px 24px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 15px; margin-top: 8px; }
+        button:hover { background: #0056b3; }
+        #status { margin-top: 14px; padding: 10px; border-radius: 4px; display: none; }
+        #status.ok  { background: #d4edda; color: #155724; }
+        #status.err { background: #f8d7da; color: #721c24; }
+        .revision { font-size: 13px; color: #888; margin-bottom: 18px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <nav>
+        <a href="/dashboard">← Дашборд</a>
+    </nav>
+    <h1>Конфигурация устройства</h1>
+
+    <p class="revision">Текущая ревизия: <strong id="revLabel">{{ config.revision }}</strong></p>
+
+    <div class="binding-note">
+        Параметры подключения (<code>wifi_ssid</code>, <code>wifi_pass</code>, <code>server_url</code>)
+        изменяются только через Serial или десктоп-GUI и недоступны здесь.
+    </div>
+
+    <form id="cfgForm">
+        {% for key in editable_keys %}
+        <div class="form-row">
+            <label for="f_{{ key }}">{{ key }}</label>
+            <input type="text" id="f_{{ key }}" name="{{ key }}" value="{{ config[key] }}">
+        </div>
+        {% endfor %}
+        <button type="submit">Сохранить</button>
+    </form>
+
+    <div id="status"></div>
+</div>
+
+<script>
+    document.getElementById("cfgForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const form  = e.target;
+        const data  = {};
+        const keys  = {{ editable_keys | tojson }};
+        keys.forEach(k => {
+            const el = form.elements[k];
+            if (el) data[k] = isNaN(el.value) ? el.value : Number(el.value);
+        });
+
+        const resp   = await fetch("/api/config", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify(data),
+        });
+        const result = await resp.json();
+        const box    = document.getElementById("status");
+
+        if (resp.ok) {
+            box.className = "ok";
+            box.textContent = `Сохранено. Ревизия: ${result.revision}`;
+            document.getElementById("revLabel").textContent = result.revision;
+        } else {
+            const rej = result.rejected && result.rejected.length
+                ? ` (отклонены: ${result.rejected.join(", ")})`
+                : "";
+            box.className = "err";
+            box.textContent = `Ошибка: изменения не применены${rej}.`;
+        }
+        box.style.display = "block";
+    });
+</script>
+</body>
+</html>

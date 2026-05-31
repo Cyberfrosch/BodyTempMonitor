@@ -1,9 +1,9 @@
 """
-tool.py — единая точка входа для CLI-утилит BodyTempMonitor.
+tool.py - единая точка входа для CLI-утилит BodyTempMonitor.
 
 Подкоманды:
-  tool config [флаги]  — управление конфигурацией ESP32 (config_tool.py)
-  tool log [флаги]     — выгрузка CSV-журнала и мониторинг Serial (logger.py)
+  tool config [флаги]  - управление конфигурацией ESP32 (config_tool.py)
+  tool log [флаги]     - выгрузка CSV-журнала и мониторинг Serial (logger.py)
 
 Usage:
   python tool.py config --show
@@ -22,7 +22,7 @@ from logger import add_log_subparser, run_log
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="BodyTempMonitor CLI — ESP32 config and log utilities.",
+        description="BodyTempMonitor CLI - ESP32 config and log utilities.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"

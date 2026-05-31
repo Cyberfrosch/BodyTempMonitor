@@ -49,9 +49,14 @@ __pycache__/
 venv/
 .venv/
 
-# PyInstaller build artifacts (spec files are kept — they are part of the repo)
+# PyInstaller build artifacts (spec files are kept - they are part of the repo)
 build/
 dist/
 
+# web-config (autocreated by server)
+device_config.json
+
 # Hidden directories
 .*/
+# ...but keep GitHub Actions workflows
+!.github/

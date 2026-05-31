@@ -1,2 +1,6 @@
 flask
 pyserial
+# PySide6 is required only for the desktop GUI (server/gui.py and the gui binary).
+# It is a heavyweight dependency (~100 MB installed, ~50–80 MB onefile binary);
+# omit it if you only need server.py, tool.py, or their binaries.
+PySide6

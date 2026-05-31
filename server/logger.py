@@ -1,5 +1,5 @@
 """
-logger.py — Загрузка CSV-журнала с ESP32 через Serial и сохранение в SQLite.
+logger.py - Загрузка CSV-журнала с ESP32 через Serial и сохранение в SQLite.
 
 Отправляет команду "download" в Serial Monitor, считывает CSV между
 маркерами BEGIN/END FILE и сохраняет данные в локальную БД.
@@ -16,6 +16,7 @@ import argparse
 import csv
 import time
 from io import StringIO
+from typing import Callable
 
 from db_common import DATABASE, Database
 from serial_device import BAUD_RATE, SERIAL_PORT, SerialDevice
@@ -26,9 +27,11 @@ KNOWN_HEADERS = {"unixtime,temp0,temp1", "reltime,temp0,temp1"}
 class LogDownloader:
     """Выгрузка CSV-журнала с ESP32 и сохранение данных в базу данных."""
 
-    def __init__(self, device: SerialDevice, db: Database) -> None:
+    def __init__(self, device: SerialDevice, db: Database,
+                 log: Callable[[str], None] = print) -> None:
         self._dev = device
         self._db  = db
+        self._log = log
 
     @staticmethod
     def is_unix_timestamp(value: str) -> bool:
@@ -75,33 +78,36 @@ class LogDownloader:
         self._dev.send("clear")
         time.sleep(1)
         response = self._dev.read_available().strip()
-        print(f"ESP32: {response}" if response else "ESP32: no response")
+        self._log(f"ESP32: {response}" if response else "ESP32: no response")
 
     def process(self, all_rows: list[list[str]]) -> None:
         """Обрабатывает CSV-данные с Unix-timestamps от RTC и сохраняет в БД."""
         rows = self.rows_to_db(all_rows)
         if not rows:
-            print("No valid data found.")
+            self._log("No valid data found.")
             return
 
         inserted, skipped_dup, skipped_inv = self._db.insert_batch(rows)
 
         if inserted > 0:
-            print(f"Inserted {inserted} new records.")
+            self._log(f"Inserted {inserted} new records.")
         if skipped_dup > 0:
-            print(f"Skipped {skipped_dup} duplicate records.")
+            self._log(f"Skipped {skipped_dup} duplicate records.")
         if skipped_inv > 0:
-            print(f"Skipped {skipped_inv} invalid records (error values).")
+            self._log(f"Skipped {skipped_inv} invalid records (error values).")
         if inserted == 0 and skipped_dup == 0 and skipped_inv == 0:
-            print("No data to process.")
+            self._log("No data to process.")
 
 
 class SerialMonitor:
     """Мониторинг вывода Serial в реальном времени с сохранением данных в БД."""
 
-    def __init__(self, device: SerialDevice, db: Database) -> None:
-        self._dev = device
-        self._db  = db
+    def __init__(self, device: SerialDevice, db: Database,
+                 chunk_cb: Callable[[str], None] | None = None) -> None:
+        self._dev      = device
+        self._db       = db
+        self._chunk_cb = chunk_cb
+        self._running  = False
 
     def _handle_logged_line(self, line: str) -> None:
         """Разбирает строку «Logged: …» и сохраняет показания датчиков в БД.
@@ -131,7 +137,7 @@ class SerialMonitor:
             pass
 
     def run(self) -> None:
-        """Запускает потоковый мониторинг Serial. Остановка — Ctrl+C.
+        """Запускает потоковый мониторинг Serial. Остановка - Ctrl+C.
 
         Байты печатаются сразу по мере поступления, не дожидаясь символа \\n,
         поэтому частичные строки (прогресс-точки Wi-Fi) видны в реальном времени.
@@ -140,16 +146,21 @@ class SerialMonitor:
         print(f"Monitoring Serial port {self._dev.port} at {self._dev.baud} baud...")
         print("Press Ctrl+C to stop.\n")
 
+        self._running = True
         buf = ""
         try:
-            while True:
+            while self._running:
                 chunk = self._dev.read_available()
                 if not chunk:
                     time.sleep(0.02)  # уступаем CPU при отсутствии данных
                     continue
 
-                # Печатаем немедленно: \r отбрасываем, чтобы \r\n не ломал вывод
-                print(chunk.replace("\r", ""), end="", flush=True)
+                # \r отбрасываем, чтобы \r\n не ломал вывод
+                clean = chunk.replace("\r", "")
+                if self._chunk_cb:
+                    self._chunk_cb(clean)
+                else:
+                    print(clean, end="", flush=True)
 
                 # Накапливаем в буфере для построчного разбора
                 buf += chunk
@@ -161,6 +172,10 @@ class SerialMonitor:
 
         except KeyboardInterrupt:
             print("\n\nMonitoring stopped.")
+
+    def stop(self) -> None:
+        """Останавливает цикл мониторинга (вызывается из другого потока)."""
+        self._running = False
 
 
 def _add_log_args(p: argparse.ArgumentParser) -> None:
@@ -192,7 +207,7 @@ def run_log(args: argparse.Namespace) -> None:
     db.init_schema()
 
     if args.monitor:
-        # serial_timeout=1 — readline возвращает управление каждую секунду при отсутствии данных
+        # serial_timeout=1 - readline возвращает управление каждую секунду при отсутствии данных
         with SerialDevice(SERIAL_PORT, BAUD_RATE, serial_timeout=1) as dev:
             SerialMonitor(dev, db).run()
         return
