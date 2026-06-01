@@ -11,17 +11,19 @@
         nav { margin-bottom: 20px; }
         nav a { color: #007bff; text-decoration: none; margin-right: 16px; }
         nav a:hover { text-decoration: underline; }
+        .section-title { font-weight: bold; color: #555; margin: 20px 0 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; }
         .form-row { display: flex; align-items: center; margin: 10px 0; gap: 12px; }
-        .form-row label { width: 160px; font-weight: bold; color: #444; flex-shrink: 0; }
+        .form-row label { width: 160px; font-weight: bold; color: #444; flex-shrink: 0; font-size: 14px; }
         .form-row input { flex: 1; padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-        .form-row .hint { font-size: 12px; color: #888; }
-        .binding-note { background: #fff8e1; border-left: 3px solid #ffc107; padding: 10px 14px; margin: 18px 0; font-size: 13px; color: #555; }
+        .form-row input[readonly] { background: #f5f5f5; color: #888; cursor: not-allowed; border-color: #ddd; }
+        .binding-note { background: #fff8e1; border-left: 3px solid #ffc107; padding: 10px 14px; margin: 4px 0 16px; font-size: 13px; color: #666; }
+        .etag-row { font-size: 13px; color: #666; margin: 0 0 20px; }
+        .etag-row code { font-family: monospace; background: #f0f0f0; padding: 2px 6px; border-radius: 3px; }
         button { padding: 10px 24px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 4px; font-size: 15px; margin-top: 8px; }
         button:hover { background: #0056b3; }
         #status { margin-top: 14px; padding: 10px; border-radius: 4px; display: none; }
         #status.ok  { background: #d4edda; color: #155724; }
         #status.err { background: #f8d7da; color: #721c24; }
-        .revision { font-size: 13px; color: #888; margin-bottom: 18px; }
     </style>
 </head>
 <body>
@@ -31,18 +33,27 @@
     </nav>
     <h1>Конфигурация устройства</h1>
 
-    <p class="revision">Текущая ревизия: <strong id="revLabel">{{ config.revision }}</strong></p>
+    <p class="etag-row">ETag несвязочного конфига: <code id="etagLabel">{{ etag }}</code></p>
 
+    <div class="section-title">Подключение</div>
     <div class="binding-note">
-        Параметры подключения (<code>wifi_ssid</code>, <code>wifi_pass</code>, <code>server_url</code>)
-        изменяются только через Serial или десктоп-GUI и недоступны здесь.
+        Эти параметры изменяются только через Serial или десктоп-GUI - веб-форма их не меняет.
     </div>
+    {% for key in binding_keys %}
+    <div class="form-row">
+        <label title="{{ key }}">{{ labels.get(key, key) }}</label>
+        <input type="{{ 'password' if key == 'wifi_pass' else 'text' }}"
+               value="{{ config.get(key, '') }}" readonly>
+    </div>
+    {% endfor %}
 
+    <div class="section-title">Редактируемые параметры</div>
     <form id="cfgForm">
         {% for key in editable_keys %}
         <div class="form-row">
-            <label for="f_{{ key }}">{{ key }}</label>
-            <input type="text" id="f_{{ key }}" name="{{ key }}" value="{{ config[key] }}">
+            <label for="f_{{ key }}" title="{{ key }}">{{ labels.get(key, key) }}</label>
+            <input type="text" id="f_{{ key }}" name="{{ key }}"
+                   value="{{ config.get(key, '') }}">
         </div>
         {% endfor %}
         <button type="submit">Сохранить</button>
@@ -54,12 +65,15 @@
 <script>
     document.getElementById("cfgForm").addEventListener("submit", async (e) => {
         e.preventDefault();
-        const form  = e.target;
-        const data  = {};
-        const keys  = {{ editable_keys | tojson }};
+        const form = e.target;
+        const data = {};
+        const keys = {{ editable_keys | tojson }};
         keys.forEach(k => {
             const el = form.elements[k];
-            if (el) data[k] = isNaN(el.value) ? el.value : Number(el.value);
+            if (!el) return;
+            const v = el.value;
+            // Числовые поля отправляем как числа; пустую строку - как строку
+            data[k] = v !== "" && !isNaN(v) ? Number(v) : v;
         });
 
         const resp   = await fetch("/api/config", {
@@ -72,8 +86,8 @@
 
         if (resp.ok) {
             box.className = "ok";
-            box.textContent = `Сохранено. Ревизия: ${result.revision}`;
-            document.getElementById("revLabel").textContent = result.revision;
+            box.textContent = `Сохранено. ETag: ${result.etag}`;
+            document.getElementById("etagLabel").textContent = result.etag;
         } else {
             const rej = result.rejected && result.rejected.length
                 ? ` (отклонены: ${result.rejected.join(", ")})`

@@ -32,57 +32,84 @@ static bool IsWebAllowed( const String& key )
     return false;
 }
 
-// ------------------------------------------------------------------ NVS для web-ревизии
+// ------------------------------------------------------------------ NVS для web-ETag
 
-/// NVS-ревизия хранится отдельно от основного конфига,
+/// ETag хранится отдельно от основного конфига (namespace "webconf", ключ "etag"),
 /// чтобы не затрагивать LoadConfig()/SaveConfig().
-static unsigned long LoadWebRevision()
+static String LoadWebETag()
 {
     Preferences p;
     p.begin( "webconf", true );
-    unsigned long rev = p.getULong( "rev", 0 );
+    String etag = p.getString( "etag", "" );
     p.end();
-    return rev;
+    return etag;
 }
 
-static void SaveWebRevision( unsigned long rev )
+static void SaveWebETag( const String& etag )
 {
     Preferences p;
     p.begin( "webconf", false );
-    p.putULong( "rev", rev );
+    p.putString( "etag", etag );
     p.end();
 }
 
-// ------------------------------------------------------------------ URL конфига
+// ------------------------------------------------------------------ построение URL
 
-/// Строит URL конфигурации из server_url, заменяя хвост "/api/data" → "/api/config".
-/// Допущение задокументировано в network.hpp (CONFIG_URL_SIZE).
-static void BuildConfigUrl( char* out, size_t size )
+/**
+ * @brief Извлекает host:port из значения server_url.
+ * @details Поддерживает как новый формат («host:port»), так и легаси-полный URL
+ *          («http://host:port/path»): срезает схему и путь.
+ *          Это обеспечивает работу уже прошитых устройств до их перенастройки.
+ * @param src  Значение поля config.server_url из NVS.
+ * @param out  Выходной буфер для «host:port».
+ * @param size Размер выходного буфера (байт).
+ */
+static void ExtractHostPort( const char* src, char* out, size_t size )
 {
-    strncpy( out, config.server_url, size - 1 );
+    const char* start = src;
+    if     ( strncmp( src, "https://", 8 ) == 0 ) start = src + 8;
+    else if( strncmp( src, "http://",  7 ) == 0 ) start = src + 7;
+
+    strncpy( out, start, size - 1 );
     out[size - 1] = '\0';
-    char* tail = strstr( out, "/api/data" );
-    if( tail != nullptr )
-        strncpy( tail, "/api/config", size - static_cast<size_t>( tail - out ) - 1 );
+
+    char* slash = strchr( out, '/' );
+    if( slash ) *slash = '\0';
+}
+
+/**
+ * @brief Строит полный HTTP-URL: «http://{host:port}{path}».
+ * @param out        Выходной буфер (минимум HTTP_URL_SIZE байт).
+ * @param size       Размер буфера.
+ * @param server_url Значение config.server_url (host:port или легаси-URL).
+ * @param path       Путь API — API_DATA_PATH или API_CONFIG_PATH.
+ */
+static void BuildUrl( char* out, size_t size, const char* server_url, const char* path )
+{
+    char hostport[128];
+    ExtractHostPort( server_url, hostport, sizeof( hostport ) );
+    snprintf( out, size, "http://%s%s", hostport, path );
 }
 
 // ------------------------------------------------------------------ web-конфиг
 
 /**
- * @brief Сравнивает ревизию сервера с локальной и при расхождении получает новый конфиг.
- * @details Выполняет ровно один GET /api/config при изменении ревизии;
- *          при совпадении - никаких HTTP-запросов.
- *          Применяет только ключи из allow-list (связочные игнорируются).
- * @param serverRev Ревизия, полученная из заголовка X-Config-Revision ответа POST /api/data.
+ * @brief Сравнивает ETag сервера с локальным и при расхождении получает новый конфиг.
+ * @details Выполняет ровно один GET /api/config при изменении ETag;
+ *          при совпадении - никаких HTTP-запросов (Serial-правки не затираются).
+ *          Применяет только ключи из allow-list (связочные жёстко игнорируются).
+ * @param serverETag ETag из заголовка X-Config-ETag ответа POST /api/data.
  */
-static void MaybeFetchWebConfig( unsigned long serverRev )
+static void MaybeFetchWebConfig( const String& serverETag )
 {
-    unsigned long storedRev = LoadWebRevision();
-    if( serverRev == storedRev ) return;
+    if( serverETag.length() == 0 ) return;
 
-    char configUrl[CONFIG_URL_SIZE];
-    BuildConfigUrl( configUrl, CONFIG_URL_SIZE );
-    if( configUrl[0] == '\0' || strstr( configUrl, "http" ) != configUrl ) return;
+    String storedETag = LoadWebETag();
+    if( serverETag == storedETag ) return;
+
+    char configUrl[HTTP_URL_SIZE];
+    BuildUrl( configUrl, HTTP_URL_SIZE, config.server_url, API_CONFIG_PATH );
+    if( configUrl[0] == '\0' || strncmp( configUrl, "http", 4 ) != 0 ) return;
 
     HTTPClient cfgHttp;
     cfgHttp.setTimeout( config.http_timeout_ms );
@@ -122,10 +149,11 @@ static void MaybeFetchWebConfig( unsigned long serverRev )
     if( changed )
     {
         SaveConfig();
-        Serial.printf( "Web config updated (rev %lu → %lu)\n", storedRev, serverRev );
+        Serial.printf( "Web config updated (etag %s → %s)\n",
+                       storedETag.c_str(), serverETag.c_str() );
     }
 
-    SaveWebRevision( serverRev );
+    SaveWebETag( serverETag );
 }
 
 void InitWiFi()
@@ -185,27 +213,28 @@ void SendToServer( const SensorReading& reading )
      if( strlen( config.server_url ) == 0 ) return;
      if( reading.temp0 == DEVICE_DISCONNECTED_C || reading.temp1 == DEVICE_DISCONNECTED_C ) return;
 
-     HTTPClient http;
-     http.setTimeout( config.http_timeout_ms );
-     http.begin( config.server_url );
-     http.addHeader( "Content-Type", "application/json" );
+     char dataUrl[HTTP_URL_SIZE];
+     BuildUrl( dataUrl, HTTP_URL_SIZE, config.server_url, API_DATA_PATH );
 
-     // Запрашиваем заголовок ревизии конфига из ответа сервера
-     static const char* revHeader[] = { "X-Config-Revision" };
-     http.collectHeaders( revHeader, 1 );
+     // Запрашиваем ETag несвязочного конфига из ответа сервера
+     static const char* etagHeader[] = { "X-Config-ETag" };
 
      char payload[HTTP_PAYLOAD_SIZE];
      snprintf( payload, sizeof( payload ),
                "{\"temp0\":%.2f,\"temp1\":%.2f,\"timestamp\":%lu}",
                reading.temp0, reading.temp1, CurrentTimestamp() );
 
+     HTTPClient http;
+     http.setTimeout( config.http_timeout_ms );
+     http.begin( dataUrl );
+     http.addHeader( "Content-Type", "application/json" );
+     http.collectHeaders( etagHeader, 1 );
+
      int httpCode = http.POST( payload );
      if( httpCode == 200 )
      {
-          // Событийная проверка конфига: GET /api/config только при смене ревизии
-          String revStr = http.header( "X-Config-Revision" );
-          if( revStr.length() > 0 )
-               MaybeFetchWebConfig( (unsigned long)revStr.toInt() );
+          // Событийная проверка конфига: GET /api/config только при смене ETag
+          MaybeFetchWebConfig( http.header( "X-Config-ETag" ) );
 
           digitalWrite( STATUS_LED, HIGH );
           Serial.println( "Sent to server OK" );
@@ -218,19 +247,17 @@ void SendToServer( const SensorReading& reading )
      else
      {
           Serial.printf( "Connection error: %d, retrying...\n", httpCode );
-          http.end();   // сбрасываем упавшее соединение перед повтором
+          http.end();
           delay( config.http_retry_delay_ms );
 
-          http.begin( config.server_url );
+          http.begin( dataUrl );
           http.addHeader( "Content-Type", "application/json" );
-          http.collectHeaders( revHeader, 1 );
+          http.collectHeaders( etagHeader, 1 );
 
           httpCode = http.POST( payload );
           if( httpCode == 200 )
           {
-               String revStr = http.header( "X-Config-Revision" );
-               if( revStr.length() > 0 )
-                    MaybeFetchWebConfig( (unsigned long)revStr.toInt() );
+               MaybeFetchWebConfig( http.header( "X-Config-ETag" ) );
 
                digitalWrite( STATUS_LED, HIGH );
                Serial.println( "Sent to server OK (retry)" );

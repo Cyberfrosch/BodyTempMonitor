@@ -69,7 +69,7 @@ jobs:
 
       # Both matrix jobs upload their archive to the same GitHub Release.
       # softprops/action-gh-release creates the release on first call and
-      # appends assets on subsequent calls — safe for parallel matrix jobs.
+      # appends assets on subsequent calls - safe for parallel matrix jobs.
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -84,8 +84,8 @@ jobs:
             |------|-------------|
             | `BodyTempMonitor-server(.exe)` | HTTP server · web dashboard · device config page (`/config`) |
             | `BodyTempMonitor-cli(.exe)`    | CLI: `config --show/set/upload/reset` · `log --monitor`      |
-            | `BodyTempMonitor-gui(.exe)`    | Desktop GUI — server + config + logger in one window          |
-            | `config.json`                  | Configuration template — **edit before first use**            |
+            | `BodyTempMonitor-gui(.exe)`    | Desktop GUI - server + config + logger in one window          |
+            | `config.json`                  | Configuration template - **edit before first use**            |
 
             Place all files in the same directory. Files created automatically at first run:
 

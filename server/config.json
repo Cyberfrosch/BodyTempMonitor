@@ -1,11 +1,21 @@
 {
-  "wifi_ssid": "YourWiFiName",
-  "wifi_pass": "YourWiFiPassword",
-  "server_url": "http://192.168.1.100:5000/api/data",
-  "ntp_server": "pool.ntp.org",
-  "gmt_offset": 25200,
-  "daylight": 0,
-  "save_interval": 10000,
-  "http_timeout": 5000,
-  "wifi_attempts": 20
+  "host": {
+    "serial_port":  "COM5",
+    "baud_rate":    115200,
+    "server_host":  "0.0.0.0",
+    "server_port":  5000,
+    "database":     "sensor_data.db"
+  },
+  "device": {
+    "wifi_ssid":     "YourWiFiName",
+    "wifi_pass":     "YourWiFiPassword",
+    "server_url":    "192.168.1.100:5000",
+    "ntp_server":    "pool.ntp.org",
+    "gmt_offset":    25200,
+    "daylight":      0,
+    "save_interval": 10000,
+    "http_timeout":  5000,
+    "http_delay":    1000,
+    "wifi_attempts": 20
+  }
 }

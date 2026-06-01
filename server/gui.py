@@ -27,10 +27,10 @@ from PySide6.QtWidgets import (
 )
 from werkzeug.serving import make_server
 
-from app_paths import external_path
-from config_tool import CONFIG_KEYS, ConfigClient
+from app_config import cfg as app_cfg
+from config_schema import CONFIG_KEYS, CONFIG_LABELS
+from config_tool import ConfigClient
 from db_common import DATABASE, Database
-from device_config import DeviceConfig
 from logger import LogDownloader, SerialMonitor
 from serial_device import BAUD_RATE, SERIAL_PORT, SerialDevice
 from server import HOST, PORT, create_app
@@ -59,15 +59,14 @@ class FlaskThread(QThread):
     """Запускает werkzeug-сервер в отдельном потоке."""
     log_line = Signal(str)
 
-    def __init__(self, db: Database, dev_cfg: DeviceConfig) -> None:
+    def __init__(self, db: Database) -> None:
         super().__init__()
         self._db      = db
-        self._dev_cfg = dev_cfg
         self._srv     = None
         self._handler: _QtLogHandler | None = None
 
     def run(self) -> None:
-        app = create_app(self._db, self._dev_cfg)
+        app = create_app(self._db)
         self._srv = make_server(HOST, PORT, app, threaded=True)
 
         self._handler = _QtLogHandler(self.log_line.emit)
@@ -89,7 +88,7 @@ class ConfigWorker(QThread):
     """Выполняет Serial-операции с ConfigClient в фоновом потоке."""
     log_line     = Signal(str)
     config_ready = Signal(dict)   # после show()
-    done         = Signal()       # не «finished» — иначе конфликт с QThread.finished
+    done         = Signal()       # не «finished» - иначе конфликт с QThread.finished
 
     def __init__(self, port: str, baud: int, action: str, **kwargs) -> None:
         super().__init__()
@@ -121,7 +120,7 @@ class ConfigWorker(QThread):
 class DownloadWorker(QThread):
     """Скачивает CSV или очищает журнал."""
     log_line = Signal(str)
-    done     = Signal()       # не «finished» — иначе конфликт с QThread.finished
+    done     = Signal()       # не «finished» - иначе конфликт с QThread.finished
 
     def __init__(self, port: str, baud: int, db: Database, action: str) -> None:
         super().__init__()
@@ -166,7 +165,7 @@ class MonitorWorker(QThread):
     """Потоковый мониторинг Serial. Останавливается через stop()."""
     chunk    = Signal(str)   # сырой текст для отображения
     db_saved = Signal(str)   # строка подтверждения сохранения в БД
-    done     = Signal()      # не «finished» — иначе конфликт с QThread.finished
+    done     = Signal()      # не «finished» - иначе конфликт с QThread.finished
 
     def __init__(self, port: str, baud: int, db: Database) -> None:
         super().__init__()
@@ -193,10 +192,9 @@ class MonitorWorker(QThread):
 # ══════════════════════════════════════════════════════════════════════ tab: server
 
 class ServerTab(QWidget):
-    def __init__(self, db: Database, dev_cfg: DeviceConfig) -> None:
+    def __init__(self, db: Database) -> None:
         super().__init__()
-        self._db      = db
-        self._dev_cfg = dev_cfg
+        self._db     = db
         self._thread: FlaskThread | None = None
         self._running = False
         self._build_ui()
@@ -235,7 +233,7 @@ class ServerTab(QWidget):
         )
 
     def _start(self) -> None:
-        self._thread = FlaskThread(self._db, self._dev_cfg)
+        self._thread = FlaskThread(self._db)
         self._thread.log_line.connect(self._append)
         self._thread.start()
         self._running = True
@@ -306,8 +304,11 @@ class ConfigTab(QWidget):
             le = QLineEdit()
             if key == "wifi_pass":
                 le.setEchoMode(QLineEdit.EchoMode.Password)
+                le.setPlaceholderText("не считывается с устройства — задайте вручную")
             self._fields[key] = le
-            form.addRow(key, le)
+            lbl = QLabel(CONFIG_LABELS.get(key, key))
+            lbl.setToolTip(key)
+            form.addRow(lbl, le)
         root.addWidget(grp)
 
         # --- Action buttons
@@ -315,7 +316,7 @@ class ConfigTab(QWidget):
         self._btn_read   = QPushButton("Прочитать")
         self._btn_apply  = QPushButton("Применить изменения")
         self._btn_upload = QPushButton("Загрузить config.json")
-        self._btn_reset  = QPushButton("Сбросить к дефолтам")
+        self._btn_reset  = QPushButton("Сбросить к умолчанию")
         for btn in (self._btn_read, self._btn_apply, self._btn_upload, self._btn_reset):
             btn_row.addWidget(btn)
         root.addLayout(btn_row)
@@ -370,14 +371,21 @@ class ConfigTab(QWidget):
         w.config_ready.connect(self._populate_form)
         self._start_worker(w)
 
-    def _populate_form(self, cfg: dict) -> None:
+    def _populate_form(self, device_cfg: dict) -> None:
         self._orig_values = {}
         for key, le in self._fields.items():
-            val = cfg.get(key, "")
-            if key == "wifi_pass" and val == "***":
-                val = ""  # не перезаписываем пароль маскированным значением
+            if key == "wifi_pass":
+                # Password is always masked on device — never overwrite field or orig value.
+                # Empty orig marks "unchanged": _do_apply skips empty fields, so an untouched
+                # password field will not be sent to the device.
+                le.setText("")
+                self._orig_values[key] = ""
+                continue
+            val = device_cfg.get(key, "")
             le.setText(str(val))
             self._orig_values[key] = str(val)
+        app_cfg.save_from_device(device_cfg)
+        self._log.appendPlainText("Конфигурация сохранена в config.json")
 
     def _do_apply(self) -> None:
         pairs = []
@@ -558,14 +566,14 @@ class LoggerTab(QWidget):
 # ══════════════════════════════════════════════════════════════════════ main window
 
 class MainWindow(QMainWindow):
-    def __init__(self, db: Database, dev_cfg: DeviceConfig) -> None:
+    def __init__(self, db: Database) -> None:
         super().__init__()
         self.setWindowTitle("BodyTempMonitor")
         self.resize(900, 620)
 
         tabs = QTabWidget()
 
-        self._server_tab = ServerTab(db, dev_cfg)
+        self._server_tab = ServerTab(db)
         self._config_tab = ConfigTab()
         self._logger_tab = LoggerTab(db)
 
@@ -597,10 +605,9 @@ class MainWindow(QMainWindow):
 def main() -> None:
     db = Database(DATABASE)
     db.init_schema()
-    dev_cfg = DeviceConfig()
 
     app = QApplication(sys.argv)
-    win = MainWindow(db, dev_cfg)
+    win = MainWindow(db)
     win.show()
     sys.exit(app.exec())
 

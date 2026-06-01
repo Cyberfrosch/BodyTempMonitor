@@ -2,7 +2,11 @@
  * @file      sketch.ino
  * @brief     Мониторинг температуры тела с двумя датчиками DS18B20.
  * @details   Периодическая запись в CSV (LittleFS), отправка на HTTP-сервер,
- *            обработка Serial-команд.
+ *            обработка Serial-команд и BLE-команд конфигурации.
+ *
+ * @note      Partition scheme: выберите «Huge APP (3MB No OTA)» или «Minimal SPIFFS»
+ *            (Arduino IDE: Инструменты → Partition Scheme). Wi-Fi + BLE + LittleFS
+ *            не вмещаются в дефолтную схему разделов («Default 4MB with spiffs»).
  */
 
 #include "system.hpp"
@@ -12,6 +16,7 @@
 #include "storage.hpp"
 #include "network.hpp"
 #include "serial_commands.hpp"
+#include "ble_config.hpp"
 
 static void CheckDevices()
 {
@@ -33,6 +38,7 @@ void setup()
      if( !InitStorage() )  FaultReboot( "LittleFS init failed" );
 
      InitWiFi();
+     InitBLE();
 }
 
 void loop()
@@ -40,6 +46,7 @@ void loop()
      static unsigned long lastSave = 0;
 
      HandleSerialCommands();
+     UpdateBLE();
 
      if( millis() - lastSave >= config.save_interval_ms )
      {

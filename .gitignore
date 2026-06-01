@@ -40,6 +40,7 @@
 
 # Vulnerable data and credentials
 sketch/credential.hpp
+sketch/ble_secret.hpp
 
 # Python cache
 __pycache__/
@@ -52,9 +53,6 @@ venv/
 # PyInstaller build artifacts (spec files are kept - they are part of the repo)
 build/
 dist/
-
-# web-config (autocreated by server)
-device_config.json
 
 # Hidden directories
 .*/
